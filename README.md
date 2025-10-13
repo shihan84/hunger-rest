@@ -5,31 +5,31 @@ Python Tkinter billing system with SQLite, India GST compliance, role-based logi
 ## 1) Installation
 
 ### Windows (recommended)
-1. Install Python 3.11 (64-bit) from the official website and check "Add Python to PATH".
-2. Open Command Prompt in the project folder.
-3. Install dependencies:
+1. Install Python 3.11 (64-bit) and check "Add Python to PATH".
+2. Option A: One-click batch
+   ```bat
+   install_windows.bat
+   ```
+3. Option B: GUI installer (PowerShell)
+   - Right-click `install_windows_gui.ps1` > Run with PowerShell
+   - Click Install, then Run App
+4. Or manual:
    ```bash
    python -m pip install -r requirements.txt
-   ```
-4. Run the app:
-   ```bash
    python main.py
    ```
 
-<<<<<<< HEAD
+### macOS
+- Prefer Python 3.11 from the official website (bundles Tk). On macOS 14.6, system Tk may abort; using the official installer avoids this.
+```bash
+/Library/Frameworks/Python.framework/Versions/3.11/bin/python3 -m pip install -r requirements.txt
+/Library/Frameworks/Python.framework/Versions/3.11/bin/python3 main.py
+```
+
 ## Notes
 - Configure Telegram in `restaurant_billing/config.py`.
 - Data stored in `data/restaurant.db`.
 - Licensee: Varchaswaa Media Pvt Ltd. Restaurant: HUNGER Restaurant.
-=======
-### macOS
-- Prefer Python 3.11 from the official website (bundles Tk). On macOS 14.6, system Tk may abort; using the official installer avoids this.
-1. Install Python 3.11 (universal2).
-2. In Terminal at the project folder:
-   ```bash
-   /Library/Frameworks/Python.framework/Versions/3.11/bin/python3 -m pip install -r requirements.txt
-   /Library/Frameworks/Python.framework/Versions/3.11/bin/python3 main.py
-   ```
 
 ## 2) First Login
 - Default SUPER_ADMIN account:
@@ -80,4 +80,3 @@ Edit `restaurant_billing/config.py`:
 
 ## 10) Support
 - For customization (GST formats, printers, multi-language, e-invoicing), contact Varchaswaa Media Pvt Ltd.
->>>>>>> c724902 (Docs: installation steps, user manual, and license attribution)

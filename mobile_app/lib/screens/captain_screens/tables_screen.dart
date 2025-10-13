@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'create_order_screen.dart';
 
 class TablesScreen extends StatefulWidget {
   @override
@@ -52,10 +53,8 @@ class _TablesScreenState extends State<TablesScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          // Navigate to create order screen
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Create Order - Coming Soon')),
-          );
+          // Show table selection dialog
+          _showTableSelectionDialog();
         },
         child: Icon(Icons.add),
         backgroundColor: Colors.orange.shade600,
@@ -168,9 +167,22 @@ class _TablesScreenState extends State<TablesScreen> {
               title: Text('Create Order'),
               onTap: () {
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Create Order - Coming Soon')),
-                );
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => CreateOrderScreen(tableNumber: table['number']),
+                  ),
+                ).then((success) {
+                  if (success == true) {
+                    // Refresh table status or show success message
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Order created successfully!'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                });
               },
             ),
             if (table['status'] == 'occupied')
@@ -186,6 +198,48 @@ class _TablesScreenState extends State<TablesScreen> {
               ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showTableSelectionDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Select Table'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(10, (index) {
+            final tableNumber = index + 1;
+            return ListTile(
+              title: Text('Table $tableNumber'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => CreateOrderScreen(tableNumber: tableNumber),
+                  ),
+                ).then((success) {
+                  if (success == true) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Order created successfully!'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                });
+              },
+            );
+          }),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel'),
+          ),
+        ],
       ),
     );
   }

@@ -4,6 +4,7 @@ import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'services/auth_service.dart';
 import 'services/websocket_service.dart';
+import 'services/api_service.dart';
 
 void main() {
   runApp(MyApp());
@@ -16,6 +17,9 @@ class MyApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthService()),
         ChangeNotifierProvider(create: (_) => WebSocketService()),
+        ProxyProvider<AuthService, ApiService>(
+          update: (_, authService, __) => ApiService(authService),
+        ),
       ],
       child: MaterialApp(
         title: 'HUNGER Restaurant',

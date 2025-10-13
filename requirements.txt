@@ -1,0 +1,6 @@
+pillow==10.4.0
+qrcode==7.4.2
+python-dateutil==2.9.0.post0
+num2words==0.5.13
+python-escpos==3.1
+python-telegram-bot==21.6

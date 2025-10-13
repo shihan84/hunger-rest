@@ -36,6 +36,55 @@ class ApiService {
     }
   }
 
+  Future<int> createMenuItem(MenuItem item) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/menu'),
+      headers: _headers,
+      body: json.encode({
+        'name': item.name,
+        'price': item.price,
+        'category': item.category,
+        'gst_slab': item.gstSlab,
+        'hsn_code': item.hsnCode,
+        'food_type': item.foodType,
+      }),
+    );
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      return data['id'];
+    } else {
+      throw Exception('Failed to create item');
+    }
+  }
+
+  Future<void> updateMenuItem(int id, MenuItem item) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/menu/$id'),
+      headers: _headers,
+      body: json.encode({
+        'name': item.name,
+        'price': item.price,
+        'category': item.category,
+        'gst_slab': item.gstSlab,
+        'hsn_code': item.hsnCode,
+        'food_type': item.foodType,
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Failed to update item');
+    }
+  }
+
+  Future<void> deleteMenuItem(int id) async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/menu/$id'),
+      headers: _headers,
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Failed to delete item');
+    }
+  }
+
   Future<String> createOrder({
     required int tableNumber,
     required List<OrderItem> items,

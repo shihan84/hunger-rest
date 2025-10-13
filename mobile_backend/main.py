@@ -91,6 +91,14 @@ class TokenResponse(BaseModel):
     token_type: str
     user: Dict[str, Any]
 
+class MenuUpsert(BaseModel):
+	name: str
+	price: float
+	category: str
+	gst_slab: float
+	hsn_code: str
+	food_type: str
+
 # JWT Functions
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
@@ -149,7 +157,51 @@ async def login(request: LoginRequest):
 
 @app.get("/api/menu")
 async def get_menu(token_data: dict = Depends(verify_token)):
-    return list_menu_items()
+	return list_menu_items()
+
+@app.post("/api/menu")
+async def create_menu_item(req: MenuUpsert, token_data: dict = Depends(verify_token)):
+	if token_data.get("role") not in ("ADMIN", "SUPER_ADMIN"):
+		raise HTTPException(status_code=403, detail="Insufficient permissions")
+	with get_conn() as conn:
+		cur = conn.execute(
+			"""
+			INSERT INTO MenuItems(name, price, category, gst_slab, hsn_code, food_type)
+			VALUES(?,?,?,?,?,?)
+			""",
+			(req.name, req.price, req.category, req.gst_slab, req.hsn_code, req.food_type)
+		)
+		item_id = cur.lastrowid
+	await manager.broadcast(json.dumps({"type": "menu_updated", "action": "create", "id": item_id}))
+	return {"id": item_id}
+
+@app.put("/api/menu/{item_id}")
+async def update_menu_item(item_id: int, req: MenuUpsert, token_data: dict = Depends(verify_token)):
+	if token_data.get("role") not in ("ADMIN", "SUPER_ADMIN"):
+		raise HTTPException(status_code=403, detail="Insufficient permissions")
+	with get_conn() as conn:
+		cur = conn.execute(
+			"""
+			UPDATE MenuItems SET name=?, price=?, category=?, gst_slab=?, hsn_code=?, food_type=?
+			WHERE id=?
+			""",
+			(req.name, req.price, req.category, req.gst_slab, req.hsn_code, req.food_type, item_id)
+		)
+		if cur.rowcount == 0:
+			raise HTTPException(status_code=404, detail="Menu item not found")
+	await manager.broadcast(json.dumps({"type": "menu_updated", "action": "update", "id": item_id}))
+	return {"ok": True}
+
+@app.delete("/api/menu/{item_id}")
+async def delete_menu_item(item_id: int, token_data: dict = Depends(verify_token)):
+	if token_data.get("role") not in ("ADMIN", "SUPER_ADMIN"):
+		raise HTTPException(status_code=403, detail="Insufficient permissions")
+	with get_conn() as conn:
+		cur = conn.execute("DELETE FROM MenuItems WHERE id=?", (item_id,))
+		if cur.rowcount == 0:
+			raise HTTPException(status_code=404, detail="Menu item not found")
+	await manager.broadcast(json.dumps({"type": "menu_updated", "action": "delete", "id": item_id}))
+	return {"ok": True}
 
 @app.get("/api/orders/open")
 async def get_open_orders(token_data: dict = Depends(verify_token)):

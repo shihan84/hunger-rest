@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import 'captain_screens/tables_screen.dart';
 import 'admin_screens/dashboard_screen.dart';
+import 'admin_screens/menu/menu_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   @override
@@ -79,7 +80,7 @@ class _HomeScreenState extends State<HomeScreen> {
       case 0:
         return DashboardScreen();
       case 1:
-        return Center(child: Text('Menu Management - Coming Soon'));
+        return MenuScreen();
       case 2:
         return Center(child: Text('User Management - Coming Soon'));
       default:

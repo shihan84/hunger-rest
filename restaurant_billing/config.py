@@ -6,7 +6,7 @@ from typing import Optional
 @dataclass(frozen=True)
 class AppConfig:
 	app_name: str = "HUNGER Restaurant Billing"
-	licensee: str = "Varchaswaa Media Pvt Ltd"
+	licensee: str = "Varchaswaa Medi Pvt Ltd"
 	restaurant_legal_name: str = "HUNGER Restaurant"
 	developed_by: str = "Varchaswaa Media Pvt Ltd"
 	rights_owner: str = "Varchaswaa Media Pvt Ltd"
@@ -19,6 +19,8 @@ class AppConfig:
 	fullscreen: bool = False
 	telegram_bot_token: Optional[str] = None
 	telegram_chat_id: Optional[str] = None
+	upi_vpa: Optional[str] = None
+	upi_payee_name: Optional[str] = None
 
 
 CONFIG = AppConfig()

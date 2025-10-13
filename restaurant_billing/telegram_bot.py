@@ -3,6 +3,7 @@ from telegram import Bot
 from telegram.error import TelegramError
 
 from .config import CONFIG
+from .db import get_today_sales_totals
 
 
 def send_message(text: str, bot_token: Optional[str] = None, chat_id: Optional[str] = None) -> bool:
@@ -19,3 +20,13 @@ def send_message(text: str, bot_token: Optional[str] = None, chat_id: Optional[s
 		return True
 	except TelegramError:
 		return False
+
+
+def send_today_sales_summary() -> bool:
+	subtotal, grand = get_today_sales_totals()
+	text = (
+		f"HUNGER Restaurant Sales Today\n"
+		f"Subtotal (Taxable): ₹{subtotal:.2f}\n"
+		f"Grand Total: ₹{grand:.2f}"
+	)
+	return send_message(text)

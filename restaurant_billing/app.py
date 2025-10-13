@@ -5,9 +5,12 @@ from pathlib import Path
 import platform
 
 from .config import CONFIG
-from .db import init_db, get_order_by_invoice
+from .db import init_db, get_order_by_invoice, list_menu_items, create_order, list_open_orders, mark_order_paid
 from .auth import verify_password, get_user, seed_super_admin, user_can, A_MANAGE_USERS, A_MANAGE_MENU, A_VIEW_REPORTS, A_CREATE_ORDER, A_CHECKOUT_BILL, A_CONFIGURE_SETTINGS, A_LOOKUP_BILL
 from .telegram_bot import send_message
+from .gst import compute_gst_for_order_items
+from .utils import format_currency_inr
+from .payments import generate_upi_qr, tk_image_from_path
 
 
 def _macos_fullscreen_supported() -> bool:
@@ -101,9 +104,7 @@ class RestaurantApp(tk.Tk):
 				self.attributes("-fullscreen", True)
 				self.bind("<Escape>", lambda e: self.attributes("-fullscreen", False))
 			else:
-				w = self.winfo_screenwidth()
-				h = self.winfo_screenheight()
-				self.geometry(f"{w}x{h}+0+0")
+				w = self.winfo_screenwidth(); h = self.winfo_screenheight(); self.geometry(f"{w}x{h}+0+0")
 				self.bind("<Escape>", lambda e: self.geometry("1200x800"))
 		else:
 			self.geometry("1200x800")
@@ -128,24 +129,28 @@ class RestaurantApp(tk.Tk):
 
 		toolbar = ttk.Frame(root)
 		toolbar.pack(fill="x", padx=12, pady=(0,8))
-		self.btn_manage_users = ttk.Button(toolbar, text="Users", command=lambda: messagebox.showinfo("Users", "Manage Users"))
+		self.btn_manage_users = ttk.Button(toolbar, text="Users", command=self._open_user_management)
 		self.btn_manage_users.pack(side="left", padx=4)
-		self.btn_menu = ttk.Button(toolbar, text="Menu", command=lambda: messagebox.showinfo("Menu", "Manage Menu"))
+		self.btn_menu = ttk.Button(toolbar, text="Menu", command=self._open_menu_management)
 		self.btn_menu.pack(side="left", padx=4)
-		self.btn_reports = ttk.Button(toolbar, text="Reports", command=lambda: messagebox.showinfo("Reports", "View Reports"))
+		self.btn_reports = ttk.Button(toolbar, text="Reports", command=self._send_today_sales)
 		self.btn_reports.pack(side="left", padx=4)
-		self.btn_new_order = ttk.Button(toolbar, text="New Order", command=lambda: messagebox.showinfo("Order", "Create Order"))
+		self.btn_new_order = ttk.Button(toolbar, text="New Order", command=self._open_order_screen)
 		self.btn_new_order.pack(side="left", padx=4)
-		self.btn_checkout = ttk.Button(toolbar, text="Checkout", command=lambda: messagebox.showinfo("Checkout", "Checkout Bill"))
+		self.btn_checkout = ttk.Button(toolbar, text="Checkout", command=self._open_payments)
 		self.btn_checkout.pack(side="left", padx=4)
+		self.btn_orders = ttk.Button(toolbar, text="Orders", command=self._open_orders_management)
+		self.btn_orders.pack(side="left", padx=4)
+		self.btn_print = ttk.Button(toolbar, text="Print", command=self._print_last_invoice)
+		self.btn_print.pack(side="left", padx=4)
 		self.btn_lookup = ttk.Button(toolbar, text="Find Bill", command=self._lookup_bill)
 		self.btn_lookup.pack(side="left", padx=4)
 		self.btn_settings = ttk.Button(toolbar, text="Settings", command=self._open_settings)
 		self.btn_settings.pack(side="left", padx=4)
 
-		body = ttk.Frame(root)
-		body.pack(fill="both", expand=True, padx=12, pady=8)
-		self.body_text = tk.Text(body, height=10)
+		self.body = ttk.Frame(root)
+		self.body.pack(fill="both", expand=True, padx=12, pady=8)
+		self.body_text = tk.Text(self.body, height=10)
 		self.body_text.pack(fill="both", expand=True)
 		self.body_text.insert("1.0", "Welcome. UI under construction.\n")
 
@@ -166,6 +171,7 @@ class RestaurantApp(tk.Tk):
 		self._set_state(self.btn_reports, user_can(user, A_VIEW_REPORTS))
 		self._set_state(self.btn_new_order, user_can(user, A_CREATE_ORDER))
 		self._set_state(self.btn_checkout, user_can(user, A_CHECKOUT_BILL))
+		self._set_state(self.btn_orders, user_can(user, A_CHECKOUT_BILL))
 		self._set_state(self.btn_lookup, user_can(user, A_LOOKUP_BILL))
 		self._set_state(self.btn_settings, user_can(user, A_CONFIGURE_SETTINGS))
 
@@ -205,6 +211,315 @@ class RestaurantApp(tk.Tk):
 		for item in order["items"]:
 			lines.append(f" - {item['item_name']} x{item['quantity']} @ {item['rate']} = {item['line_amount']}")
 		self.body_text.insert("1.0", "\n".join(lines) + "\n")
+
+	def _open_order_screen(self):
+		if not user_can(self.current_user, A_CREATE_ORDER):
+			messagebox.showwarning("Permission Denied", "You do not have access to create orders.")
+			return
+		for child in self.body.winfo_children():
+			child.destroy()
+		container = ttk.Frame(self.body)
+		container.pack(fill="both", expand=True)
+
+		left = ttk.Frame(container)
+		left.pack(side="left", fill="both", expand=True)
+		right = ttk.Frame(container)
+		right.pack(side="right", fill="y")
+
+		# Menu list
+		cols = ("name","price","gst","hsn","cat")
+		self.menu_tree = ttk.Treeview(left, columns=cols, show="headings", height=12)
+		for c in cols:
+			self.menu_tree.heading(c, text=c.upper())
+		self.menu_tree.pack(fill="both", expand=True)
+		for m in list_menu_items():
+			self.menu_tree.insert("", "end", iid=str(m["id"]), values=(m["name"], m["price"], m["gst_slab"], m["hsn_code"], m["category"]))
+
+		# Cart
+		cart_frame = ttk.LabelFrame(right, text="Cart")
+		cart_frame.pack(fill="y", padx=6, pady=6)
+		self.cart_items: list = []
+		self.cart_list = tk.Listbox(cart_frame, height=10, width=36)
+		self.cart_list.pack(padx=6, pady=6)
+		qty_var = tk.StringVar(value="1")
+		qty_entry = ttk.Entry(cart_frame, textvariable=qty_var, width=6)
+		qty_entry.pack(padx=6)
+		add_btn = ttk.Button(cart_frame, text="Add", command=lambda: self._add_to_cart(qty_var))
+		add_btn.pack(pady=4)
+
+		# Table and totals
+		meta = ttk.LabelFrame(right, text="Details")
+		meta.pack(fill="y", padx=6, pady=6)
+		self.table_var = tk.StringVar(value="1")
+		ttk.Label(meta, text="Table #").pack(anchor="w", padx=6)
+		ttk.Entry(meta, textvariable=self.table_var, width=8).pack(padx=6, pady=(0,6))
+		self.service_var = tk.StringVar(value=str(int(CONFIG.default_service_charge_percent)))
+		ttk.Label(meta, text="Service %").pack(anchor="w", padx=6)
+		ttk.Entry(meta, textvariable=self.service_var, width=8).pack(padx=6, pady=(0,6))
+
+		self.totals_var = tk.StringVar(value="Total: ₹0.00")
+		ttk.Label(meta, textvariable=self.totals_var).pack(anchor="w", padx=6, pady=(6,0))
+		calc_btn = ttk.Button(meta, text="Recalculate", command=self._recalc_totals)
+		calc_btn.pack(padx=6, pady=4)
+		save_btn = ttk.Button(meta, text="Save Order", command=self._save_order)
+		save_btn.pack(padx=6, pady=6)
+		self._update_save_enabled(save_btn)
+
+	def _update_save_enabled(self, btn: ttk.Button):
+		allowed = user_can(self.current_user, A_CREATE_ORDER)
+		self._set_state(btn, allowed)
+
+	def _add_to_cart(self, qty_var: tk.StringVar):
+		selection = self.menu_tree.selection()
+		if not selection:
+			return
+		item_id = int(selection[0])
+		vals = self.menu_tree.item(selection[0], 'values')
+		name, price, gst_slab, hsn, cat = vals
+		try:
+			qty = int(qty_var.get() or "1")
+		except ValueError:
+			qty = 1
+		entry = {"id": item_id, "name": name, "rate": float(price), "gst_slab": float(gst_slab), "hsn_code": hsn, "quantity": qty}
+		self.cart_items.append(entry)
+		self.cart_list.insert(tk.END, f"{name} x{qty} @ {price}")
+		self._recalc_totals()
+
+	def _collect_items_dict(self):
+		items = {}
+		for it in self.cart_items:
+			items[it["name"]] = {"quantity": it["quantity"], "rate": it["rate"], "gst_slab": it["gst_slab"], "hsn_code": it["hsn_code"]}
+		return items
+
+	def _recalc_totals(self):
+		try:
+			service_pct = float(self.service_var.get() or 0)
+		except ValueError:
+			service_pct = 0.0
+		res = compute_gst_for_order_items(self._collect_items_dict(), intra_state=True, service_charge_percent=service_pct)
+		self._last_totals = res
+		self.totals_var.set(f"Subtotal: {format_currency_inr(res['subtotal'])} | CGST: {format_currency_inr(res['cgst'])} | SGST: {format_currency_inr(res['sgst'])} | Total: {format_currency_inr(res['total'])}")
+
+	def _save_order(self):
+		if not self.cart_items:
+			messagebox.showwarning("Empty", "No items in cart")
+			return
+		try:
+			table_no = int(self.table_var.get() or "1")
+		except ValueError:
+			table_no = 1
+		invoice = create_order(
+			table_number=table_no,
+			customer_name=None,
+			customer_gstin=None,
+			place_of_supply=None,
+			totals=self._last_totals,
+			items=self.cart_items,
+			status='OPEN',
+		)
+		try:
+			from .invoice import save_invoice_text
+			from .einvoice import save_einvoice_json
+			path = save_invoice_text(invoice)
+			einvoice_path = save_einvoice_json(invoice)
+			self._last_invoice = invoice
+			msg = f"Order saved. Invoice: {invoice}\nSaved at: {path}"
+			if einvoice_path:
+				msg += f"\nE-invoice: {einvoice_path}"
+			messagebox.showinfo("Saved", msg)
+		except Exception:
+			self._last_invoice = invoice
+			messagebox.showinfo("Saved", f"Order saved. Invoice: {invoice}")
+
+	def _print_last_invoice(self):
+		if not getattr(self, "_last_invoice", None):
+			messagebox.showwarning("No Invoice", "Save an order first.")
+			return
+		try:
+			from .printing import print_invoice_os
+			p = print_invoice_os(self._last_invoice)
+			messagebox.showinfo("Print", f"Sent to printer (or saved). File: {p}")
+		except Exception as e:
+			messagebox.showerror("Print", f"Failed: {e}")
+
+	def _open_orders_management(self):
+		if not user_can(self.current_user, A_CHECKOUT_BILL):
+			messagebox.showwarning("Permission Denied", "You do not have access to Orders.")
+			return
+		for child in self.body.winfo_children():
+			child.destroy()
+		container = ttk.Frame(self.body)
+		container.pack(fill="both", expand=True)
+		
+		# Open orders list
+		orders_frame = ttk.LabelFrame(container, text="Open Orders")
+		orders_frame.pack(fill="both", expand=True, padx=6, pady=6)
+		
+		cols = ("table", "invoice", "date", "total")
+		self.orders_tree = ttk.Treeview(orders_frame, columns=cols, show="headings", height=12)
+		for c in cols:
+			self.orders_tree.heading(c, text=c.upper())
+		self.orders_tree.pack(fill="both", expand=True, padx=6, pady=6)
+		
+		# Refresh and mark paid buttons
+		btn_frame = ttk.Frame(orders_frame)
+		btn_frame.pack(fill="x", padx=6, pady=6)
+		ttk.Button(btn_frame, text="Refresh", command=self._refresh_orders).pack(side="left", padx=4)
+		ttk.Button(btn_frame, text="Mark as Paid", command=self._mark_selected_paid).pack(side="left", padx=4)
+		
+		self._refresh_orders()
+
+	def _refresh_orders(self):
+		for item in self.orders_tree.get_children():
+			self.orders_tree.delete(item)
+		for order in list_open_orders():
+			self.orders_tree.insert("", "end", iid=order["invoice_number"], values=(
+				order["table_number"], order["invoice_number"], order["invoice_date"], format_currency_inr(order["total"])
+			))
+
+	def _mark_selected_paid(self):
+		selection = self.orders_tree.selection()
+		if not selection:
+			messagebox.showwarning("No Selection", "Select an order to mark as paid.")
+			return
+		invoice = selection[0]
+		if mark_order_paid(invoice):
+			messagebox.showinfo("Success", f"Order {invoice} marked as PAID.")
+			self._refresh_orders()
+		else:
+			messagebox.showerror("Error", "Failed to update order status.")
+
+	def _open_menu_management(self):
+		if not user_can(self.current_user, A_MANAGE_MENU):
+			messagebox.showwarning("Permission Denied", "You do not have access to Menu Management.")
+			return
+		for child in self.body.winfo_children():
+			child.destroy()
+		container = ttk.Frame(self.body)
+		container.pack(fill="both", expand=True)
+		
+		# Menu items list
+		menu_frame = ttk.LabelFrame(container, text="Menu Items")
+		menu_frame.pack(fill="both", expand=True, padx=6, pady=6)
+		
+		cols = ("name", "price", "category", "gst", "hsn", "type")
+		self.menu_mgmt_tree = ttk.Treeview(menu_frame, columns=cols, show="headings", height=12)
+		for c in cols:
+			self.menu_mgmt_tree.heading(c, text=c.upper())
+		self.menu_mgmt_tree.pack(fill="both", expand=True, padx=6, pady=6)
+		
+		# Add/Edit buttons
+		btn_frame = ttk.Frame(menu_frame)
+		btn_frame.pack(fill="x", padx=6, pady=6)
+		ttk.Button(btn_frame, text="Add Item", command=self._add_menu_item).pack(side="left", padx=4)
+		ttk.Button(btn_frame, text="Edit Item", command=self._edit_menu_item).pack(side="left", padx=4)
+		ttk.Button(btn_frame, text="Refresh", command=self._refresh_menu_mgmt).pack(side="left", padx=4)
+		
+		self._refresh_menu_mgmt()
+
+	def _refresh_menu_mgmt(self):
+		for item in self.menu_mgmt_tree.get_children():
+			self.menu_mgmt_tree.delete(item)
+		for item in list_menu_items():
+			self.menu_mgmt_tree.insert("", "end", iid=str(item["id"]), values=(
+				item["name"], item["price"], item["category"], item["gst_slab"], item["hsn_code"], item["food_type"]
+			))
+
+	def _add_menu_item(self):
+		# Simple dialog for adding menu items
+		dlg = MenuItemDialog(self, "Add Menu Item")
+		if dlg.result:
+			# Add to database (placeholder - would need actual DB insert)
+			messagebox.showinfo("Success", "Menu item added (placeholder)")
+			self._refresh_menu_mgmt()
+
+	def _edit_menu_item(self):
+		selection = self.menu_mgmt_tree.selection()
+		if not selection:
+			messagebox.showwarning("No Selection", "Select an item to edit.")
+			return
+		# Placeholder for edit functionality
+		messagebox.showinfo("Edit", "Edit functionality placeholder")
+
+
+class MenuItemDialog(simpledialog.Dialog):
+	def __init__(self, parent, title: str):
+		self.result = None
+		super().__init__(parent, title)
+
+	def body(self, master):
+		ttk.Label(master, text="Name").grid(row=0, column=0, padx=6, pady=6, sticky="e")
+		ttk.Label(master, text="Price").grid(row=1, column=0, padx=6, pady=6, sticky="e")
+		ttk.Label(master, text="Category").grid(row=2, column=0, padx=6, pady=6, sticky="e")
+		ttk.Label(master, text="GST %").grid(row=3, column=0, padx=6, pady=6, sticky="e")
+		ttk.Label(master, text="HSN Code").grid(row=4, column=0, padx=6, pady=6, sticky="e")
+		ttk.Label(master, text="Type").grid(row=5, column=0, padx=6, pady=6, sticky="e")
+		
+		self.name_var = tk.StringVar()
+		self.price_var = tk.StringVar()
+		self.category_var = tk.StringVar()
+		self.gst_var = tk.StringVar(value="5")
+		self.hsn_var = tk.StringVar(value="996331")
+		self.type_var = tk.StringVar(value="veg")
+		
+		ttk.Entry(master, textvariable=self.name_var).grid(row=0, column=1, padx=6, pady=6)
+		ttk.Entry(master, textvariable=self.price_var).grid(row=1, column=1, padx=6, pady=6)
+		ttk.Entry(master, textvariable=self.category_var).grid(row=2, column=1, padx=6, pady=6)
+		ttk.Entry(master, textvariable=self.gst_var).grid(row=3, column=1, padx=6, pady=6)
+		ttk.Entry(master, textvariable=self.hsn_var).grid(row=4, column=1, padx=6, pady=6)
+		
+		type_combo = ttk.Combobox(master, textvariable=self.type_var, values=["veg", "non-veg"])
+		type_combo.grid(row=5, column=1, padx=6, pady=6)
+		
+		return master
+
+	def apply(self):
+		self.result = {
+			"name": self.name_var.get().strip(),
+			"price": self.price_var.get().strip(),
+			"category": self.category_var.get().strip(),
+			"gst": self.gst_var.get().strip(),
+			"hsn": self.hsn_var.get().strip(),
+			"type": self.type_var.get().strip()
+		}
+
+	def _open_user_management(self):
+		if not user_can(self.current_user, A_MANAGE_USERS):
+			messagebox.showwarning("Permission Denied", "You do not have access to User Management.")
+			return
+		# Placeholder for user management
+		messagebox.showinfo("User Management", "User management UI placeholder - would show user list, add/edit users, change passwords, etc.")
+
+	def _open_payments(self):
+		# Simple payment screen with UPI QR for the last calculated total (if any)
+		for child in self.body.winfo_children():
+			child.destroy()
+		wrap = ttk.Frame(self.body)
+		wrap.pack(fill="both", expand=True)
+		amount = getattr(self, "_last_totals", {}).get("total", 0.0)
+		vpa = getattr(CONFIG, "upi_vpa", None) or "test@upi"
+		payee = CONFIG.restaurant_legal_name
+		path = generate_upi_qr(vpa, payee, amount=amount, note=f"Table {getattr(self, 'table_var', tk.StringVar(value='')).get() if hasattr(self,'table_var') else ''}")
+		img = tk_image_from_path(path)
+		lbl = ttk.Label(wrap, image=img)
+		lbl.image = img
+		lbl.pack(pady=12)
+		amt_lbl = ttk.Label(wrap, text=f"Pay {format_currency_inr(amount)} via UPI ({vpa})")
+		amt_lbl.pack()
+
+	def _send_today_sales(self):
+		if not user_can(self.current_user, A_VIEW_REPORTS):
+			messagebox.showwarning("Permission Denied", "You do not have access to Reports.")
+			return
+		try:
+			from .telegram_bot import send_today_sales_summary
+			ok = send_today_sales_summary()
+			if ok:
+				messagebox.showinfo("Telegram", "Today's sales summary sent.")
+			else:
+				messagebox.showerror("Telegram", "Failed to send. Configure bot token and chat id in config.")
+		except Exception as e:
+			messagebox.showerror("Telegram", f"Error: {e}")
 
 
 def bootstrap() -> None:

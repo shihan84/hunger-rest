@@ -77,6 +77,13 @@ CREATE TABLE IF NOT EXISTS Users (
 	created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_users_username ON Users(username);
+
+-- State codes for GST compliance
+CREATE TABLE IF NOT EXISTS StateCodes (
+	code TEXT PRIMARY KEY,
+	name TEXT NOT NULL,
+	is_union_territory INTEGER NOT NULL DEFAULT 0
+);
 """
 
 
@@ -98,6 +105,12 @@ SEED_SQL: Iterable[str] = (
 	"INSERT INTO MenuItems(name, price, category, gst_slab, hsn_code, food_type) VALUES ('Veg Fried Rice', 200, 'Chinese & Continental', 5, '996331', 'veg');",
 	"INSERT INTO MenuItems(name, price, category, gst_slab, hsn_code, food_type) VALUES ('Masala Dosa', 120, 'South Indian', 5, '996331', 'veg');",
 	"INSERT INTO MenuItems(name, price, category, gst_slab, hsn_code, food_type) VALUES ('Lassi', 90, 'Beverages & Desserts', 12, '996331', 'veg');",
+	# State codes (sample)
+	"INSERT INTO StateCodes(code, name, is_union_territory) VALUES ('27', 'Maharashtra', 0);",
+	"INSERT INTO StateCodes(code, name, is_union_territory) VALUES ('07', 'Delhi', 1);",
+	"INSERT INTO StateCodes(code, name, is_union_territory) VALUES ('33', 'Tamil Nadu', 0);",
+	"INSERT INTO StateCodes(code, name, is_union_territory) VALUES ('09', 'Gujarat', 0);",
+	"INSERT INTO StateCodes(code, name, is_union_territory) VALUES ('29', 'Karnataka', 0);",
 )
 
 
@@ -161,3 +174,74 @@ def get_order_by_invoice(invoice_number: str) -> Optional[Dict[str, Any]]:
 			})
 		order_dict["items"] = items
 		return order_dict
+
+
+def list_menu_items() -> List[Dict[str, Any]]:
+	with get_conn() as conn:
+		cur = conn.execute("SELECT id, name, price, category, gst_slab, hsn_code, food_type FROM MenuItems ORDER BY category, name")
+		rows = cur.fetchall()
+		return [
+			{"id": r[0], "name": r[1], "price": float(r[2]), "category": r[3], "gst_slab": float(r[4]), "hsn_code": r[5], "food_type": r[6]}
+			for r in rows
+		]
+
+
+def _generate_invoice_number(conn: sqlite3.Connection) -> str:
+	cur = conn.execute("SELECT strftime('%Y%m%d', 'now') || '-' || printf('%05d', COALESCE(MAX(order_id)+1,1)) FROM Orders")
+	return cur.fetchone()[0]
+
+
+def list_open_orders() -> List[Dict[str, Any]]:
+	"""List all open orders."""
+	with get_conn() as conn:
+		cur = conn.execute("SELECT order_id, table_number, invoice_number, invoice_date, total FROM Orders WHERE status = 'OPEN' ORDER BY invoice_date DESC")
+		rows = cur.fetchall()
+		return [
+			{"order_id": r[0], "table_number": r[1], "invoice_number": r[2], "invoice_date": r[3], "total": float(r[4])}
+			for r in rows
+		]
+
+
+def mark_order_paid(invoice_number: str) -> bool:
+	"""Mark an order as PAID."""
+	with get_conn() as conn:
+		cur = conn.execute("UPDATE Orders SET status = 'PAID' WHERE invoice_number = ?", (invoice_number,))
+		return cur.rowcount > 0
+
+
+def create_order(
+	table_number: int,
+	customer_name: Optional[str],
+	customer_gstin: Optional[str],
+	place_of_supply: Optional[str],
+	totals: Dict[str, float],
+	items: List[Dict[str, Any]],
+	status: str = 'OPEN',
+) -> str:
+	"""Create an order and its items. Returns invoice_number."""
+	with get_conn() as conn:
+		invoice_number = _generate_invoice_number(conn)
+		invoice_date = conn.execute("SELECT datetime('now')").fetchone()[0]
+		cur = conn.execute(
+			"""
+			INSERT INTO Orders(table_number, customer_name, customer_gstin, place_of_supply, invoice_number, invoice_date,
+				subtotal, cgst, sgst, igst, service_charge, total, status)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+			""",
+			(
+				table_number, customer_name, customer_gstin, place_of_supply, invoice_number, invoice_date,
+				totals.get('subtotal',0.0), totals.get('cgst',0.0), totals.get('sgst',0.0), totals.get('igst',0.0), totals.get('service_charge',0.0), totals.get('total',0.0), status
+			),
+		)
+		order_id = cur.lastrowid
+		for it in items:
+			conn.execute(
+				"""
+				INSERT INTO OrderItems(order_id, item_id, item_name, hsn_code, quantity, rate, gst_slab, line_amount)
+				VALUES(?,?,?,?,?,?,?,?)
+				""",
+				(
+					order_id, it["id"], it["name"], it["hsn_code"], int(it["quantity"]), float(it["rate"]), float(it["gst_slab"]), float(it["quantity"]) * float(it["rate"])
+				),
+			)
+		return invoice_number

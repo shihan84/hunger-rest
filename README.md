@@ -17,4 +17,4 @@ Login: `owner` / `1234`
 ## Notes
 - Configure Telegram in `restaurant_billing/config.py`.
 - Data stored in `data/restaurant.db`.
-- Licensee: Varchaswaa Medi Pvt Ltd. Restaurant: HUNGER Restaurant.
+- Licensee: Varchaswaa Media Pvt Ltd. Restaurant: HUNGER Restaurant.

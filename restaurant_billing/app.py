@@ -11,6 +11,7 @@ from .telegram_bot import send_message
 from .gst import compute_gst_for_order_items
 from .utils import format_currency_inr
 from .payments import generate_upi_qr, tk_image_from_path
+from .updater import run_update
 
 
 def _macos_fullscreen_supported() -> bool:
@@ -147,6 +148,8 @@ class RestaurantApp(tk.Tk):
 		self.btn_lookup.pack(side="left", padx=4)
 		self.btn_settings = ttk.Button(toolbar, text="Settings", command=self._open_settings)
 		self.btn_settings.pack(side="left", padx=4)
+		self.btn_update = ttk.Button(toolbar, text="Update", command=self._run_update)
+		self.btn_update.pack(side="left", padx=4)
 
 		self.body = ttk.Frame(root)
 		self.body.pack(fill="both", expand=True, padx=12, pady=8)
@@ -174,6 +177,7 @@ class RestaurantApp(tk.Tk):
 		self._set_state(self.btn_orders, user_can(user, A_CHECKOUT_BILL))
 		self._set_state(self.btn_lookup, user_can(user, A_LOOKUP_BILL))
 		self._set_state(self.btn_settings, user_can(user, A_CONFIGURE_SETTINGS))
+		self._set_state(self.btn_update, self.current_user.get("role") == "SUPER_ADMIN")
 
 	def _open_settings(self):
 		if not user_can(self.current_user, A_CONFIGURE_SETTINGS):
@@ -520,6 +524,16 @@ class MenuItemDialog(simpledialog.Dialog):
 				messagebox.showerror("Telegram", "Failed to send. Configure bot token and chat id in config.")
 		except Exception as e:
 			messagebox.showerror("Telegram", f"Error: {e}")
+
+	def _run_update(self):
+		if self.current_user.get("role") != "SUPER_ADMIN":
+			messagebox.showwarning("Permission Denied", "Only SUPER_ADMIN can update the app.")
+			return
+		ok, msg = run_update(Path.cwd())
+		if ok:
+			messagebox.showinfo("Update", f"Updated successfully.\n\n{msg}")
+		else:
+			messagebox.showerror("Update Failed", msg)
 
 
 def bootstrap() -> None:

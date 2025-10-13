@@ -12,27 +12,39 @@ except Exception:
 	_HAS_ESCPOS = False
 
 
+def _split_lines_for_width(text: str, width: int) -> str:
+	lines = []
+	for line in text.splitlines():
+		while len(line) > width:
+			lines.append(line[:width])
+			line = line[width:]
+		lines.append(line)
+	return "\n".join(lines)
+
+
 def print_invoice_os(invoice_number: str) -> Path:
-	"""Save invoice text and send to OS default print handler where available."""
 	path = save_invoice_text(invoice_number)
-	# macOS: open -P (may require GUI); Windows: not supported via CLI in all cases; users can open and print
 	if os.name == 'posix':
 		os.system(f"lp '{path}' 2>/dev/null || open -P '{path}' 2>/dev/null || true")
 	return path
 
 
-def print_invoice_escpos(invoice_number: str, usb_vendor: Optional[int] = None, usb_product: Optional[int] = None, host: Optional[str] = None, port: int = 9100) -> bool:
-	"""Print using ESC/POS via USB or Network. Returns True if attempted."""
+def print_invoice_escpos(invoice_number: str, usb_vendor: Optional[int] = None, usb_product: Optional[int] = None, host: Optional[str] = None, port: Optional[int] = None) -> bool:
 	if not _HAS_ESCPOS:
 		return False
 	text_path = save_invoice_text(invoice_number)
 	text = Path(text_path).read_text(encoding='utf-8')
+	text = _split_lines_for_width(text, CONFIG.paper_width_chars)
 	try:
 		printer = None
-		if usb_vendor and usb_product:
-			printer = Usb(usb_vendor, usb_product, 0)
-		elif host:
-			printer = Network(host, port=port)
+		v = usb_vendor or CONFIG.escpos_vendor_id
+		p = usb_product or CONFIG.escpos_product_id
+		h = host or CONFIG.escpos_host
+		po = port or CONFIG.escpos_port
+		if CONFIG.printer_type == 'escpos_usb' and v and p:
+			printer = Usb(v, p, 0)
+		elif CONFIG.printer_type == 'escpos_network' and h:
+			printer = Network(h, port=po)
 		if not printer:
 			return False
 		for line in text.splitlines():

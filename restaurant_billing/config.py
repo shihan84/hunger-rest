@@ -21,6 +21,14 @@ class AppConfig:
 	telegram_chat_id: Optional[str] = None
 	upi_vpa: Optional[str] = None
 	upi_payee_name: Optional[str] = None
+	# Printing configuration
+	printer_type: str = "os"  # os | escpos_usb | escpos_network
+	escpos_vendor_id: Optional[int] = None  # e.g., 0x04b8 for Epson
+	escpos_product_id: Optional[int] = None
+	escpos_host: Optional[str] = None  # for network printers
+	escpos_port: int = 9100
+	paper_width_chars: int = 42  # typical 58mm(~32) or 80mm(~42) paper
+	printer_encoding: str = "cp437"
 
 
 CONFIG = AppConfig()

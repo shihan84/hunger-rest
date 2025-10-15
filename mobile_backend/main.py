@@ -4,7 +4,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 import json
-import jwt
+try:
+	from jose import jwt, JWTError  # python-jose
+except Exception:  # fallback to PyJWT
+	import jwt  # type: ignore
+	class JWTError(Exception):
+		pass
 import asyncio
 from datetime import datetime, timedelta
 import sqlite3
@@ -121,7 +126,7 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
                 headers={"WWW-Authenticate": "Bearer"},
             )
         return payload
-    except jwt.PyJWTError:
+    except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",

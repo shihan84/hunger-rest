@@ -11,7 +11,7 @@ from .telegram_bot import send_message
 from .gst import compute_gst_for_order_items
 from .utils import format_currency_inr
 from .payments import generate_upi_qr, tk_image_from_path
-from .updater import run_update
+from .updater import run_update, check_and_notify_updates, get_update_settings, save_update_settings
 
 
 def _macos_fullscreen_supported() -> bool:
@@ -68,6 +68,7 @@ class RestaurantApp(tk.Tk):
 		self._login_flow()
 		self._build_ui(logo_path)
 		self._apply_permissions()
+		self._check_for_updates_on_startup()
 
 	def _login_flow(self) -> None:
 		seed_super_admin()
@@ -150,6 +151,8 @@ class RestaurantApp(tk.Tk):
 		self.btn_settings.pack(side="left", padx=4)
 		self.btn_update = ttk.Button(toolbar, text="Update", command=self._run_update)
 		self.btn_update.pack(side="left", padx=4)
+		self.btn_update_settings = ttk.Button(toolbar, text="Update Settings", command=self._open_update_settings)
+		self.btn_update_settings.pack(side="left", padx=4)
 
 		self.body = ttk.Frame(root)
 		self.body.pack(fill="both", expand=True, padx=12, pady=8)
@@ -178,6 +181,7 @@ class RestaurantApp(tk.Tk):
 		self._set_state(self.btn_lookup, user_can(user, A_LOOKUP_BILL))
 		self._set_state(self.btn_settings, user_can(user, A_CONFIGURE_SETTINGS))
 		self._set_state(self.btn_update, self.current_user.get("role") == "SUPER_ADMIN")
+		self._set_state(self.btn_update_settings, user_can(user, A_CONFIGURE_SETTINGS))
 
 	def _open_settings(self):
 		if not user_can(self.current_user, A_CONFIGURE_SETTINGS):
@@ -417,6 +421,7 @@ class RestaurantApp(tk.Tk):
 		btn_frame.pack(fill="x", padx=6, pady=6)
 		ttk.Button(btn_frame, text="Add Item", command=self._add_menu_item).pack(side="left", padx=4)
 		ttk.Button(btn_frame, text="Edit Item", command=self._edit_menu_item).pack(side="left", padx=4)
+		ttk.Button(btn_frame, text="Delete Item", command=self._delete_menu_item).pack(side="left", padx=4)
 		ttk.Button(btn_frame, text="Refresh", command=self._refresh_menu_mgmt).pack(side="left", padx=4)
 		
 		self._refresh_menu_mgmt()
@@ -433,22 +438,103 @@ class RestaurantApp(tk.Tk):
 		# Simple dialog for adding menu items
 		dlg = MenuItemDialog(self, "Add Menu Item")
 		if dlg.result:
-			# Add to database (placeholder - would need actual DB insert)
-			messagebox.showinfo("Success", "Menu item added (placeholder)")
-			self._refresh_menu_mgmt()
+			try:
+				from .db import get_conn
+				with get_conn() as conn:
+					conn.execute(
+						"INSERT INTO MenuItems (name, price, category, gst_slab, hsn_code, food_type) VALUES (?, ?, ?, ?, ?, ?)",
+						(
+							dlg.result["name"],
+							float(dlg.result["price"]),
+							dlg.result["category"],
+							float(dlg.result["gst"]),
+							dlg.result["hsn"],
+							dlg.result["type"]
+						)
+					)
+				messagebox.showinfo("Success", "Menu item added successfully!")
+				self._refresh_menu_mgmt()
+			except Exception as e:
+				messagebox.showerror("Error", f"Failed to add menu item: {str(e)}")
 
 	def _edit_menu_item(self):
 		selection = self.menu_mgmt_tree.selection()
 		if not selection:
 			messagebox.showwarning("No Selection", "Select an item to edit.")
 			return
-		# Placeholder for edit functionality
-		messagebox.showinfo("Edit", "Edit functionality placeholder")
+		
+		item_id = int(selection[0])
+		# Get current item data
+		from .db import get_conn
+		with get_conn() as conn:
+			cur = conn.execute("SELECT name, price, category, gst_slab, hsn_code, food_type FROM MenuItems WHERE id = ?", (item_id,))
+			row = cur.fetchone()
+			if not row:
+				messagebox.showerror("Error", "Menu item not found.")
+				return
+		
+		# Create edit dialog with current data
+		current_data = {
+			"name": row[0],
+			"price": str(row[1]),
+			"category": row[2],
+			"gst_slab": str(row[3]),
+			"hsn_code": row[4],
+			"food_type": row[5]
+		}
+		dlg = MenuItemDialog(self, "Edit Menu Item", current_data)
+		if dlg.result:
+			try:
+				with get_conn() as conn:
+					conn.execute(
+						"UPDATE MenuItems SET name=?, price=?, category=?, gst_slab=?, hsn_code=?, food_type=? WHERE id=?",
+						(
+							dlg.result["name"],
+							float(dlg.result["price"]),
+							dlg.result["category"],
+							float(dlg.result["gst"]),
+							dlg.result["hsn"],
+							dlg.result["type"],
+							item_id
+						)
+					)
+				messagebox.showinfo("Success", "Menu item updated successfully!")
+				self._refresh_menu_mgmt()
+			except Exception as e:
+				messagebox.showerror("Error", f"Failed to update menu item: {str(e)}")
+
+	def _delete_menu_item(self):
+		selection = self.menu_mgmt_tree.selection()
+		if not selection:
+			messagebox.showwarning("No Selection", "Select an item to delete.")
+			return
+		
+		item_id = int(selection[0])
+		# Get item name for confirmation
+		from .db import get_conn
+		with get_conn() as conn:
+			cur = conn.execute("SELECT name FROM MenuItems WHERE id = ?", (item_id,))
+			row = cur.fetchone()
+			if not row:
+				messagebox.showerror("Error", "Menu item not found.")
+				return
+			item_name = row[0]
+		
+		# Confirm deletion
+		if messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete '{item_name}'?"):
+			try:
+				with get_conn() as conn:
+					conn.execute("DELETE FROM MenuItems WHERE id = ?", (item_id,))
+				messagebox.showinfo("Success", "Menu item deleted successfully!")
+				self._refresh_menu_mgmt()
+			except Exception as e:
+				messagebox.showerror("Error", f"Failed to delete menu item: {str(e)}")
 
 
 class MenuItemDialog(simpledialog.Dialog):
-	def __init__(self, parent, title: str):
+	def __init__(self, parent, title: str, initial_data: dict = None):
 		self.result = None
+		self.initial_data = initial_data or {}
 		super().__init__(parent, title)
 
 	def body(self, master):
@@ -459,12 +545,12 @@ class MenuItemDialog(simpledialog.Dialog):
 		ttk.Label(master, text="HSN Code").grid(row=4, column=0, padx=6, pady=6, sticky="e")
 		ttk.Label(master, text="Type").grid(row=5, column=0, padx=6, pady=6, sticky="e")
 		
-		self.name_var = tk.StringVar()
-		self.price_var = tk.StringVar()
-		self.category_var = tk.StringVar()
-		self.gst_var = tk.StringVar(value="5")
-		self.hsn_var = tk.StringVar(value="996331")
-		self.type_var = tk.StringVar(value="veg")
+		self.name_var = tk.StringVar(value=self.initial_data.get("name", ""))
+		self.price_var = tk.StringVar(value=self.initial_data.get("price", ""))
+		self.category_var = tk.StringVar(value=self.initial_data.get("category", ""))
+		self.gst_var = tk.StringVar(value=self.initial_data.get("gst_slab", "5"))
+		self.hsn_var = tk.StringVar(value=self.initial_data.get("hsn_code", "996331"))
+		self.type_var = tk.StringVar(value=self.initial_data.get("food_type", "veg"))
 		
 		ttk.Entry(master, textvariable=self.name_var).grid(row=0, column=1, padx=6, pady=6)
 		ttk.Entry(master, textvariable=self.price_var).grid(row=1, column=1, padx=6, pady=6)
@@ -491,8 +577,156 @@ class MenuItemDialog(simpledialog.Dialog):
 		if not user_can(self.current_user, A_MANAGE_USERS):
 			messagebox.showwarning("Permission Denied", "You do not have access to User Management.")
 			return
-		# Placeholder for user management
-		messagebox.showinfo("User Management", "User management UI placeholder - would show user list, add/edit users, change passwords, etc.")
+		
+		# Clear body and create user management interface
+		for child in self.body.winfo_children():
+			child.destroy()
+		
+		container = ttk.Frame(self.body)
+		container.pack(fill="both", expand=True)
+		
+		# Users list
+		users_frame = ttk.LabelFrame(container, text="Users")
+		users_frame.pack(fill="both", expand=True, padx=6, pady=6)
+		
+		cols = ("id", "username", "full_name", "role")
+		self.users_tree = ttk.Treeview(users_frame, columns=cols, show="headings", height=10)
+		for c in cols:
+			self.users_tree.heading(c, text=c.upper())
+		self.users_tree.pack(fill="both", expand=True, padx=6, pady=6)
+		
+		# Buttons
+		btn_frame = ttk.Frame(users_frame)
+		btn_frame.pack(fill="x", padx=6, pady=6)
+		ttk.Button(btn_frame, text="Add User", command=self._add_user).pack(side="left", padx=4)
+		ttk.Button(btn_frame, text="Edit User", command=self._edit_user).pack(side="left", padx=4)
+		ttk.Button(btn_frame, text="Change Password", command=self._change_password).pack(side="left", padx=4)
+		ttk.Button(btn_frame, text="Delete User", command=self._delete_user).pack(side="left", padx=4)
+		ttk.Button(btn_frame, text="Refresh", command=self._refresh_users).pack(side="left", padx=4)
+		
+		self._refresh_users()
+
+	def _refresh_users(self):
+		for item in self.users_tree.get_children():
+			self.users_tree.delete(item)
+		from .db import get_conn
+		with get_conn() as conn:
+			cur = conn.execute("SELECT id, username, full_name, role FROM Users ORDER BY id")
+			for row in cur.fetchall():
+				self.users_tree.insert("", "end", iid=str(row[0]), values=row)
+
+	def _add_user(self):
+		dlg = UserDialog(self, "Add User")
+		if dlg.result:
+			try:
+				from .db import get_conn
+				from .auth import create_user
+				create_user(
+					dlg.result["username"],
+					dlg.result["password"],
+					dlg.result["full_name"],
+					dlg.result["role"]
+				)
+				messagebox.showinfo("Success", "User added successfully!")
+				self._refresh_users()
+			except Exception as e:
+				messagebox.showerror("Error", f"Failed to add user: {str(e)}")
+
+	def _edit_user(self):
+		selection = self.users_tree.selection()
+		if not selection:
+			messagebox.showwarning("No Selection", "Select a user to edit.")
+			return
+		
+		user_id = int(selection[0])
+		from .db import get_conn
+		with get_conn() as conn:
+			cur = conn.execute("SELECT username, full_name, role FROM Users WHERE id = ?", (user_id,))
+			row = cur.fetchone()
+			if not row:
+				messagebox.showerror("Error", "User not found.")
+				return
+		
+		current_data = {
+			"username": row[0],
+			"full_name": row[1],
+			"role": row[2]
+		}
+		dlg = UserDialog(self, "Edit User", current_data)
+		if dlg.result:
+			try:
+				with get_conn() as conn:
+					conn.execute(
+						"UPDATE Users SET username=?, full_name=?, role=? WHERE id=?",
+						(dlg.result["username"], dlg.result["full_name"], dlg.result["role"], user_id)
+					)
+				messagebox.showinfo("Success", "User updated successfully!")
+				self._refresh_users()
+			except Exception as e:
+				messagebox.showerror("Error", f"Failed to update user: {str(e)}")
+
+	def _change_password(self):
+		selection = self.users_tree.selection()
+		if not selection:
+			messagebox.showwarning("No Selection", "Select a user to change password.")
+			return
+		
+		user_id = int(selection[0])
+		dlg = PasswordDialog(self, "Change Password")
+		if dlg.result:
+			try:
+				from .db import get_conn
+				from .auth import _hash_password, _generate_salt
+				salt = _generate_salt()
+				hashed = _hash_password(dlg.result, salt)
+				with get_conn() as conn:
+					conn.execute(
+						"UPDATE Users SET password_hash=?, salt=? WHERE id=?",
+						(hashed, salt.hex(), user_id)
+					)
+				messagebox.showinfo("Success", "Password changed successfully!")
+			except Exception as e:
+				messagebox.showerror("Error", f"Failed to change password: {str(e)}")
+
+	def _delete_user(self):
+		selection = self.users_tree.selection()
+		if not selection:
+			messagebox.showwarning("No Selection", "Select a user to delete.")
+			return
+		
+		user_id = int(selection[0])
+		# Get user info for confirmation
+		from .db import get_conn
+		with get_conn() as conn:
+			cur = conn.execute("SELECT username, full_name, role FROM Users WHERE id = ?", (user_id,))
+			row = cur.fetchone()
+			if not row:
+				messagebox.showerror("Error", "User not found.")
+				return
+			username, full_name, role = row
+		
+		# Prevent deleting the last SUPER_ADMIN
+		if role == "SUPER_ADMIN":
+			cur = conn.execute("SELECT COUNT(*) FROM Users WHERE role = 'SUPER_ADMIN'")
+			count = cur.fetchone()[0]
+			if count <= 1:
+				messagebox.showerror("Error", "Cannot delete the last SUPER_ADMIN user.")
+				return
+		
+		# Prevent deleting current user
+		if user_id == self.current_user["id"]:
+			messagebox.showerror("Error", "Cannot delete your own account.")
+			return
+		
+		# Confirm deletion
+		if messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete user '{username}' ({full_name})?"):
+			try:
+				with get_conn() as conn:
+					conn.execute("DELETE FROM Users WHERE id = ?", (user_id,))
+				messagebox.showinfo("Success", "User deleted successfully!")
+				self._refresh_users()
+			except Exception as e:
+				messagebox.showerror("Error", f"Failed to delete user: {str(e)}")
 
 	def _open_payments(self):
 		# Simple payment screen with UPI QR for the last calculated total (if any)
@@ -534,6 +768,161 @@ class MenuItemDialog(simpledialog.Dialog):
 			messagebox.showinfo("Update", f"Updated successfully.\n\n{msg}")
 		else:
 			messagebox.showerror("Update Failed", msg)
+
+	def _check_for_updates_on_startup(self):
+		"""Check for updates on application startup."""
+		try:
+			config_path = Path.cwd() / "data" / "update_config.json"
+			settings = get_update_settings(config_path)
+			
+			if settings.get("auto_check_enabled", True):
+				has_update, message = check_and_notify_updates(
+					Path.cwd(), 
+					config_path,
+					settings.get("github_repo", "shihan84/hunger-rest")
+				)
+				
+				if has_update and message and settings.get("notify_on_update", True):
+					# Show update notification
+					self.after(2000, lambda: self._show_update_notification(message))
+		except Exception:
+			# Silently fail if update check fails
+			pass
+
+	def _show_update_notification(self, message: str):
+		"""Show update notification dialog."""
+		from tkinter import messagebox
+		result = messagebox.askyesno("Update Available", message)
+		if result:
+			self._run_update()
+
+	def _open_update_settings(self):
+		"""Open update settings dialog."""
+		if not user_can(self.current_user, A_CONFIGURE_SETTINGS):
+			messagebox.showwarning("Permission Denied", "You do not have access to Update Settings.")
+			return
+		
+		dlg = UpdateSettingsDialog(self, "Update Settings")
+		if dlg.result:
+			config_path = Path.cwd() / "data" / "update_config.json"
+			save_update_settings(config_path, dlg.result)
+			messagebox.showinfo("Success", "Update settings saved successfully!")
+
+
+class UserDialog(simpledialog.Dialog):
+	def __init__(self, parent, title: str, initial_data: dict = None):
+		self.result = None
+		self.initial_data = initial_data or {}
+		super().__init__(parent, title)
+
+	def body(self, master):
+		ttk.Label(master, text="Username").grid(row=0, column=0, padx=6, pady=6, sticky="e")
+		ttk.Label(master, text="Full Name").grid(row=1, column=0, padx=6, pady=6, sticky="e")
+		ttk.Label(master, text="Role").grid(row=2, column=0, padx=6, pady=6, sticky="e")
+		ttk.Label(master, text="Password").grid(row=3, column=0, padx=6, pady=6, sticky="e")
+		
+		self.username_var = tk.StringVar(value=self.initial_data.get("username", ""))
+		self.full_name_var = tk.StringVar(value=self.initial_data.get("full_name", ""))
+		self.role_var = tk.StringVar(value=self.initial_data.get("role", "CAPTAIN"))
+		self.password_var = tk.StringVar()
+		
+		ttk.Entry(master, textvariable=self.username_var).grid(row=0, column=1, padx=6, pady=6)
+		ttk.Entry(master, textvariable=self.full_name_var).grid(row=1, column=1, padx=6, pady=6)
+		
+		role_combo = ttk.Combobox(master, textvariable=self.role_var, values=["SUPER_ADMIN", "ADMIN", "CAPTAIN", "CASHIER"])
+		role_combo.grid(row=2, column=1, padx=6, pady=6)
+		
+		ttk.Entry(master, textvariable=self.password_var, show="*").grid(row=3, column=1, padx=6, pady=6)
+		
+		return master
+
+	def apply(self):
+		self.result = {
+			"username": self.username_var.get().strip(),
+			"full_name": self.full_name_var.get().strip(),
+			"role": self.role_var.get().strip(),
+			"password": self.password_var.get()
+		}
+
+
+class PasswordDialog(simpledialog.Dialog):
+	def __init__(self, parent, title: str):
+		self.result = None
+		super().__init__(parent, title)
+
+	def body(self, master):
+		ttk.Label(master, text="New Password").grid(row=0, column=0, padx=6, pady=6, sticky="e")
+		ttk.Label(master, text="Confirm Password").grid(row=1, column=0, padx=6, pady=6, sticky="e")
+		
+		self.password_var = tk.StringVar()
+		self.confirm_var = tk.StringVar()
+		
+		ttk.Entry(master, textvariable=self.password_var, show="*").grid(row=0, column=1, padx=6, pady=6)
+		ttk.Entry(master, textvariable=self.confirm_var, show="*").grid(row=1, column=1, padx=6, pady=6)
+		
+		return master
+
+	def apply(self):
+		password = self.password_var.get()
+		confirm = self.confirm_var.get()
+		
+		if password != confirm:
+			messagebox.showerror("Error", "Passwords do not match.")
+			return
+		
+		if len(password) < 4:
+			messagebox.showerror("Error", "Password must be at least 4 characters.")
+			return
+		
+		self.result = password
+
+
+class UpdateSettingsDialog(simpledialog.Dialog):
+	def __init__(self, parent, title: str):
+		self.result = None
+		super().__init__(parent, title)
+
+	def body(self, master):
+		# Load current settings
+		config_path = Path.cwd() / "data" / "update_config.json"
+		settings = get_update_settings(config_path)
+		
+		# Auto check enabled
+		ttk.Label(master, text="Auto Check for Updates").grid(row=0, column=0, padx=6, pady=6, sticky="w")
+		self.auto_check_var = tk.BooleanVar(value=settings.get("auto_check_enabled", True))
+		ttk.Checkbutton(master, variable=self.auto_check_var).grid(row=0, column=1, padx=6, pady=6, sticky="w")
+		
+		# Check interval
+		ttk.Label(master, text="Check Interval (days)").grid(row=1, column=0, padx=6, pady=6, sticky="w")
+		self.interval_var = tk.StringVar(value=str(settings.get("check_interval_days", 7)))
+		interval_combo = ttk.Combobox(master, textvariable=self.interval_var, values=["1", "3", "7", "14", "30"])
+		interval_combo.grid(row=1, column=1, padx=6, pady=6, sticky="w")
+		
+		# Notify on update
+		ttk.Label(master, text="Notify on Update").grid(row=2, column=0, padx=6, pady=6, sticky="w")
+		self.notify_var = tk.BooleanVar(value=settings.get("notify_on_update", True))
+		ttk.Checkbutton(master, variable=self.notify_var).grid(row=2, column=1, padx=6, pady=6, sticky="w")
+		
+		# Auto install
+		ttk.Label(master, text="Auto Install Updates").grid(row=3, column=0, padx=6, pady=6, sticky="w")
+		self.auto_install_var = tk.BooleanVar(value=settings.get("auto_install", False))
+		ttk.Checkbutton(master, variable=self.auto_install_var).grid(row=3, column=1, padx=6, pady=6, sticky="w")
+		
+		# GitHub repository
+		ttk.Label(master, text="GitHub Repository").grid(row=4, column=0, padx=6, pady=6, sticky="w")
+		self.repo_var = tk.StringVar(value=settings.get("github_repo", "shihan84/hunger-rest"))
+		ttk.Entry(master, textvariable=self.repo_var, width=30).grid(row=4, column=1, padx=6, pady=6, sticky="w")
+		
+		return master
+
+	def apply(self):
+		self.result = {
+			"auto_check_enabled": self.auto_check_var.get(),
+			"check_interval_days": int(self.interval_var.get()),
+			"notify_on_update": self.notify_var.get(),
+			"auto_install": self.auto_install_var.get(),
+			"github_repo": self.repo_var.get().strip()
+		}
 
 
 def bootstrap() -> None:

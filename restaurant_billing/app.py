@@ -147,6 +147,8 @@ class RestaurantApp(tk.Tk):
 		self.btn_orders.pack(side="left", padx=4)
 		self.btn_print = ttk.Button(toolbar, text="Print", command=self._print_last_invoice)
 		self.btn_print.pack(side="left", padx=4)
+		self.btn_printer_config = ttk.Button(toolbar, text="Printer Config", command=self._open_printer_config)
+		self.btn_printer_config.pack(side="left", padx=4)
 		self.btn_lookup = ttk.Button(toolbar, text="Find Bill", command=self._lookup_bill)
 		self.btn_lookup.pack(side="left", padx=4)
 		self.btn_settings = ttk.Button(toolbar, text="Settings", command=self._open_settings)
@@ -346,11 +348,25 @@ class RestaurantApp(tk.Tk):
 			messagebox.showwarning("No Invoice", "Save an order first.")
 			return
 		try:
-			from .printing import print_invoice_os
-			p = print_invoice_os(self._last_invoice)
-			messagebox.showinfo("Print", f"Sent to printer (or saved). File: {p}")
+			from .printing_fixed import print_invoice_full_width, configure_printer_for_full_width
+			# Configure printer for full-width printing
+			configure_printer_for_full_width()
+			# Print with full-width formatting
+			success = print_invoice_full_width(self._last_invoice)
+			if success:
+				messagebox.showinfo("Print", f"Invoice printed successfully with full-width formatting!")
+			else:
+				messagebox.showwarning("Print", f"Printing may have failed. Check printer connection.")
 		except Exception as e:
 			messagebox.showerror("Print", f"Failed: {e}")
+
+	def _open_printer_config(self):
+		"""Open printer configuration dialog"""
+		try:
+			from .printer_config import open_printer_config
+			open_printer_config(self)
+		except Exception as e:
+			messagebox.showerror("Printer Config", f"Failed to open printer configuration: {e}")
 
 	def _open_orders_management(self):
 		if not user_can(self.current_user, A_CHECKOUT_BILL):

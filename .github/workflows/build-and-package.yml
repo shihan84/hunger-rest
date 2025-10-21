@@ -1,0 +1,446 @@
+name: Build and Package HUNGER Restaurant Billing System
+
+on:
+  push:
+    branches: [ master, main, develop ]
+  pull_request:
+    branches: [ master, main ]
+  release:
+    types: [ published ]
+  workflow_dispatch:
+    inputs:
+      create_release:
+        description: 'Create a new release'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    name: Build Windows Package
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11.7'
+        
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~\AppData\Local\pip\Cache
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r mobile_backend/requirements.txt
+        
+    - name: Test application
+      run: |
+        python -c "from restaurant_billing.db import init_db; init_db(); print('Database test passed')"
+        python -c "from restaurant_billing.app import bootstrap; print('Application import test passed')"
+        
+    - name: Create Windows installer package
+      run: |
+        # Create distribution directory
+        mkdir dist\hunger-restaurant-billing
+        mkdir dist\hunger-restaurant-billing\data
+        mkdir dist\hunger-restaurant-billing\mobile_backend
+        
+        # Copy application files
+        xcopy /E /I /Y restaurant_billing dist\hunger-restaurant-billing\restaurant_billing
+        xcopy /E /I /Y mobile_backend dist\hunger-restaurant-billing\mobile_backend
+        copy main.py dist\hunger-restaurant-billing\
+        copy requirements.txt dist\hunger-restaurant-billing\
+        copy mobile_backend\requirements.txt dist\hunger-restaurant-billing\mobile_backend\
+        
+        # Copy installation scripts
+        copy install_windows.bat dist\hunger-restaurant-billing\
+        copy install_simple.bat dist\hunger-restaurant-billing\
+        copy install_everything.bat dist\hunger-restaurant-billing\
+        copy install_everything.ps1 dist\hunger-restaurant-billing\
+        copy install_with_database.bat dist\hunger-restaurant-billing\
+        copy uninstall.ps1 dist\hunger-restaurant-billing\
+        
+        # Copy documentation
+        copy README.md dist\hunger-restaurant-billing\
+        copy INSTALLATION_QUICK_START.md dist\hunger-restaurant-billing\
+        copy DATABASE_INFO.md dist\hunger-restaurant-billing\
+        copy INSTALLATION_SUMMARY.md dist\hunger-restaurant-billing\
+        copy PRODUCTION_READINESS.md dist\hunger-restaurant-billing\
+        copy AUTOMATIC_UPDATES.md dist\hunger-restaurant-billing\
+        
+        # Create Python virtual environment
+        python -m venv dist\hunger-restaurant-billing\venv
+        
+        # Install dependencies in venv
+        dist\hunger-restaurant-billing\venv\Scripts\activate
+        dist\hunger-restaurant-billing\venv\Scripts\python.exe -m pip install --upgrade pip
+        dist\hunger-restaurant-billing\venv\Scripts\python.exe -m pip install -r requirements.txt
+        dist\hunger-restaurant-billing\venv\Scripts\python.exe -m pip install -r mobile_backend\requirements.txt
+        
+        # Create launcher scripts
+        echo @echo off > dist\hunger-restaurant-billing\start_desktop.bat
+        echo cd /d "%%~dp0" >> dist\hunger-restaurant-billing\start_desktop.bat
+        echo venv\Scripts\python.exe main.py >> dist\hunger-restaurant-billing\start_desktop.bat
+        echo pause >> dist\hunger-restaurant-billing\start_desktop.bat
+        
+        echo @echo off > dist\hunger-restaurant-billing\start_mobile.bat
+        echo cd /d "%%~dp0\mobile_backend" >> dist\hunger-restaurant-billing\start_mobile.bat
+        echo ..\venv\Scripts\python.exe main.py >> dist\hunger-restaurant-billing\start_mobile.bat
+        echo pause >> dist\hunger-restaurant-billing\start_mobile.bat
+        
+        # Initialize database
+        dist\hunger-restaurant-billing\venv\Scripts\python.exe -c "from restaurant_billing.db import init_db; init_db(); print('Database initialized')"
+        
+    - name: Create ZIP package
+      run: |
+        powershell -Command "Compress-Archive -Path 'dist\hunger-restaurant-billing\*' -DestinationPath 'dist\HUNGER-Restaurant-Billing-Windows.zip' -Force"
+        
+    - name: Upload Windows package
+      uses: actions/upload-artifact@v3
+      with:
+        name: hunger-restaurant-billing-windows
+        path: dist/HUNGER-Restaurant-Billing-Windows.zip
+        
+  build-linux:
+    runs-on: ubuntu-latest
+    name: Build Linux Package
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11.7'
+        
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r mobile_backend/requirements.txt
+        
+    - name: Test application
+      run: |
+        python -c "from restaurant_billing.db import init_db; init_db(); print('Database test passed')"
+        python -c "from restaurant_billing.app import bootstrap; print('Application import test passed')"
+        
+    - name: Create Linux installer package
+      run: |
+        # Create distribution directory
+        mkdir -p dist/hunger-restaurant-billing
+        mkdir -p dist/hunger-restaurant-billing/data
+        mkdir -p dist/hunger-restaurant-billing/mobile_backend
+        
+        # Copy application files
+        cp -r restaurant_billing dist/hunger-restaurant-billing/
+        cp -r mobile_backend dist/hunger-restaurant-billing/
+        cp main.py dist/hunger-restaurant-billing/
+        cp requirements.txt dist/hunger-restaurant-billing/
+        cp mobile_backend/requirements.txt dist/hunger-restaurant-billing/mobile_backend/
+        
+        # Copy documentation
+        cp README.md dist/hunger-restaurant-billing/
+        cp INSTALLATION_QUICK_START.md dist/hunger-restaurant-billing/
+        cp DATABASE_INFO.md dist/hunger-restaurant-billing/
+        cp INSTALLATION_SUMMARY.md dist/hunger-restaurant-billing/
+        cp PRODUCTION_READINESS.md dist/hunger-restaurant-billing/
+        cp AUTOMATIC_UPDATES.md dist/hunger-restaurant-billing/
+        
+        # Create Python virtual environment
+        python -m venv dist/hunger-restaurant-billing/venv
+        
+        # Install dependencies in venv
+        dist/hunger-restaurant-billing/venv/bin/pip install --upgrade pip
+        dist/hunger-restaurant-billing/venv/bin/pip install -r requirements.txt
+        dist/hunger-restaurant-billing/venv/bin/pip install -r mobile_backend/requirements.txt
+        
+        # Create launcher scripts
+        cat > dist/hunger-restaurant-billing/start_desktop.sh << 'EOF'
+        #!/bin/bash
+        cd "$(dirname "$0")"
+        ./venv/bin/python main.py
+        EOF
+        chmod +x dist/hunger-restaurant-billing/start_desktop.sh
+        
+        cat > dist/hunger-restaurant-billing/start_mobile.sh << 'EOF'
+        #!/bin/bash
+        cd "$(dirname "$0")/mobile_backend"
+        ../venv/bin/python main.py
+        EOF
+        chmod +x dist/hunger-restaurant-billing/start_mobile.sh
+        
+        # Create install script
+        cat > dist/hunger-restaurant-billing/install.sh << 'EOF'
+        #!/bin/bash
+        echo "Installing HUNGER Restaurant Billing System..."
+        
+        # Check if Python 3.11+ is installed
+        if ! command -v python3 &> /dev/null; then
+            echo "Python 3.11+ is required. Please install it first."
+            exit 1
+        fi
+        
+        # Check Python version
+        python_version=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+        if [[ $(echo "$python_version < 3.11" | bc -l) -eq 1 ]]; then
+            echo "Python 3.11+ is required. Current version: $python_version"
+            exit 1
+        fi
+        
+        # Install system dependencies
+        if command -v apt-get &> /dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y python3-venv python3-pip
+        elif command -v yum &> /dev/null; then
+            sudo yum install -y python3-venv python3-pip
+        elif command -v dnf &> /dev/null; then
+            sudo dnf install -y python3-venv python3-pip
+        fi
+        
+        # Initialize database
+        ./venv/bin/python -c "from restaurant_billing.db import init_db; init_db(); print('Database initialized')"
+        
+        echo "Installation completed!"
+        echo "To run the desktop application: ./start_desktop.sh"
+        echo "To run the mobile backend: ./start_mobile.sh"
+        EOF
+        chmod +x dist/hunger-restaurant-billing/install.sh
+        
+        # Initialize database
+        dist/hunger-restaurant-billing/venv/bin/python -c "from restaurant_billing.db import init_db; init_db(); print('Database initialized')"
+        
+    - name: Create TAR package
+      run: |
+        cd dist
+        tar -czf HUNGER-Restaurant-Billing-Linux.tar.gz hunger-restaurant-billing/
+        
+    - name: Upload Linux package
+      uses: actions/upload-artifact@v3
+      with:
+        name: hunger-restaurant-billing-linux
+        path: dist/HUNGER-Restaurant-Billing-Linux.tar.gz
+        
+  build-macos:
+    runs-on: macos-latest
+    name: Build macOS Package
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11.7'
+        
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/Library/Caches/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r mobile_backend/requirements.txt
+        
+    - name: Test application
+      run: |
+        python -c "from restaurant_billing.db import init_db; init_db(); print('Database test passed')"
+        python -c "from restaurant_billing.app import bootstrap; print('Application import test passed')"
+        
+    - name: Create macOS installer package
+      run: |
+        # Create distribution directory
+        mkdir -p dist/hunger-restaurant-billing
+        mkdir -p dist/hunger-restaurant-billing/data
+        mkdir -p dist/hunger-restaurant-billing/mobile_backend
+        
+        # Copy application files
+        cp -r restaurant_billing dist/hunger-restaurant-billing/
+        cp -r mobile_backend dist/hunger-restaurant-billing/
+        cp main.py dist/hunger-restaurant-billing/
+        cp requirements.txt dist/hunger-restaurant-billing/
+        cp mobile_backend/requirements.txt dist/hunger-restaurant-billing/mobile_backend/
+        
+        # Copy documentation
+        cp README.md dist/hunger-restaurant-billing/
+        cp INSTALLATION_QUICK_START.md dist/hunger-restaurant-billing/
+        cp DATABASE_INFO.md dist/hunger-restaurant-billing/
+        cp INSTALLATION_SUMMARY.md dist/hunger-restaurant-billing/
+        cp PRODUCTION_READINESS.md dist/hunger-restaurant-billing/
+        cp AUTOMATIC_UPDATES.md dist/hunger-restaurant-billing/
+        
+        # Create Python virtual environment
+        python -m venv dist/hunger-restaurant-billing/venv
+        
+        # Install dependencies in venv
+        dist/hunger-restaurant-billing/venv/bin/pip install --upgrade pip
+        dist/hunger-restaurant-billing/venv/bin/pip install -r requirements.txt
+        dist/hunger-restaurant-billing/venv/bin/pip install -r mobile_backend/requirements.txt
+        
+        # Create launcher scripts
+        cat > dist/hunger-restaurant-billing/start_desktop.command << 'EOF'
+        #!/bin/bash
+        cd "$(dirname "$0")"
+        ./venv/bin/python main.py
+        EOF
+        chmod +x dist/hunger-restaurant-billing/start_desktop.command
+        
+        cat > dist/hunger-restaurant-billing/start_mobile.command << 'EOF'
+        #!/bin/bash
+        cd "$(dirname "$0")/mobile_backend"
+        ../venv/bin/python main.py
+        EOF
+        chmod +x dist/hunger-restaurant-billing/start_mobile.command
+        
+        # Create install script
+        cat > dist/hunger-restaurant-billing/install.command << 'EOF'
+        #!/bin/bash
+        echo "Installing HUNGER Restaurant Billing System..."
+        
+        # Check if Python 3.11+ is installed
+        if ! command -v python3 &> /dev/null; then
+            echo "Python 3.11+ is required. Please install it first."
+            echo "You can install it using Homebrew: brew install python@3.11"
+            exit 1
+        fi
+        
+        # Check Python version
+        python_version=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+        if [[ $(echo "$python_version < 3.11" | bc -l) -eq 1 ]]; then
+            echo "Python 3.11+ is required. Current version: $python_version"
+            exit 1
+        fi
+        
+        # Initialize database
+        ./venv/bin/python -c "from restaurant_billing.db import init_db; init_db(); print('Database initialized')"
+        
+        echo "Installation completed!"
+        echo "To run the desktop application: ./start_desktop.command"
+        echo "To run the mobile backend: ./start_mobile.command"
+        EOF
+        chmod +x dist/hunger-restaurant-billing/install.command
+        
+        # Initialize database
+        dist/hunger-restaurant-billing/venv/bin/python -c "from restaurant_billing.db import init_db; init_db(); print('Database initialized')"
+        
+    - name: Create DMG package
+      run: |
+        cd dist
+        tar -czf HUNGER-Restaurant-Billing-macOS.tar.gz hunger-restaurant-billing/
+        
+    - name: Upload macOS package
+      uses: actions/upload-artifact@v3
+      with:
+        name: hunger-restaurant-billing-macos
+        path: dist/HUNGER-Restaurant-Billing-macOS.tar.gz
+
+  create-release:
+    if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.create_release)
+    needs: [build-windows, build-linux, build-macos]
+    runs-on: ubuntu-latest
+    name: Create Release Assets
+    
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v3
+      
+    - name: Create release assets
+      run: |
+        # Create release directory
+        mkdir -p release-assets
+        
+        # Copy Windows package
+        cp hunger-restaurant-billing-windows/HUNGER-Restaurant-Billing-Windows.zip release-assets/
+        
+        # Copy Linux package
+        cp hunger-restaurant-billing-linux/HUNGER-Restaurant-Billing-Linux.tar.gz release-assets/
+        
+        # Copy macOS package
+        cp hunger-restaurant-billing-macos/HUNGER-Restaurant-Billing-macOS.tar.gz release-assets/
+        
+        # Create installation instructions
+        cat > release-assets/INSTALLATION_INSTRUCTIONS.md << 'EOF'
+        # HUNGER Restaurant Billing System - Installation Instructions
+        
+        ## Windows Installation
+        1. Download `HUNGER-Restaurant-Billing-Windows.zip`
+        2. Extract the ZIP file to your desired location
+        3. Run `install_simple.bat` as Administrator
+        4. Or run `start_desktop.bat` to launch directly
+        
+        ## Linux Installation
+        1. Download `HUNGER-Restaurant-Billing-Linux.tar.gz`
+        2. Extract: `tar -xzf HUNGER-Restaurant-Billing-Linux.tar.gz`
+        3. Run: `cd hunger-restaurant-billing && ./install.sh`
+        4. Launch: `./start_desktop.sh`
+        
+        ## macOS Installation
+        1. Download `HUNGER-Restaurant-Billing-macOS.tar.gz`
+        2. Extract: `tar -xzf HUNGER-Restaurant-Billing-macOS.tar.gz`
+        3. Run: `cd hunger-restaurant-billing && ./install.command`
+        4. Launch: `./start_desktop.command`
+        
+        ## Default Login Credentials
+        - Username: `owner`
+        - Password: `1234`
+        EOF
+        
+    - name: Upload release assets
+      uses: actions/upload-artifact@v3
+      with:
+        name: release-assets
+        path: release-assets/
+        
+    - name: Create GitHub Release
+      if: github.event_name == 'workflow_dispatch' && inputs.create_release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v${{ github.run_number }}
+        name: Release v${{ github.run_number }}
+        body: |
+          ## HUNGER Restaurant Billing System v${{ github.run_number }}
+          
+          ### What's New
+          - Automated build and packaging
+          - Cross-platform support (Windows, Linux, macOS)
+          - Self-contained packages with virtual environments
+          - Easy installation scripts
+          
+          ### Downloads
+          - **Windows**: HUNGER-Restaurant-Billing-Windows.zip
+          - **Linux**: HUNGER-Restaurant-Billing-Linux.tar.gz  
+          - **macOS**: HUNGER-Restaurant-Billing-macOS.tar.gz
+          
+          ### Installation
+          See INSTALLATION_INSTRUCTIONS.md for detailed installation steps.
+          
+          ### Default Login
+          - Username: `owner`
+          - Password: `1234`
+        files: release-assets/*
+        draft: false
+        prerelease: false

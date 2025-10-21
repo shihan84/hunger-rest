@@ -36,39 +36,41 @@ jobs:
         echo "Creating installer assets..."
         
         # Create assets directory
-        if not exist "restaurant_billing\assets" mkdir "restaurant_billing\assets"
+        if (-not (Test-Path "restaurant_billing\assets")) { New-Item -ItemType Directory -Path "restaurant_billing\assets" -Force }
         
         # Create placeholder icon (you can replace with real icon)
-        echo. > "restaurant_billing\assets\icon.ico"
+        New-Item -ItemType File -Path "restaurant_billing\assets\icon.ico" -Force
         
         # Create placeholder images
-        echo. > "restaurant_billing\assets\header.bmp"
-        echo. > "restaurant_billing\assets\welcome.bmp"
+        New-Item -ItemType File -Path "restaurant_billing\assets\header.bmp" -Force
+        New-Item -ItemType File -Path "restaurant_billing\assets\welcome.bmp" -Force
         
         # Create LICENSE.txt if not exists
-        if not exist "LICENSE.txt" (
-            echo MIT License > LICENSE.txt
-            echo. >> LICENSE.txt
-            echo Copyright (c) 2024 HUNGER Restaurant Billing System >> LICENSE.txt
-            echo. >> LICENSE.txt
-            echo Permission is hereby granted, free of charge, to any person obtaining a copy >> LICENSE.txt
-            echo of this software and associated documentation files (the "Software"), to deal >> LICENSE.txt
-            echo in the Software without restriction, including without limitation the rights >> LICENSE.txt
-            echo to use, copy, modify, merge, publish, distribute, sublicense, and/or sell >> LICENSE.txt
-            echo copies of the Software, and to permit persons to whom the Software is >> LICENSE.txt
-            echo furnished to do so, subject to the following conditions: >> LICENSE.txt
-            echo. >> LICENSE.txt
-            echo The above copyright notice and this permission notice shall be included in all >> LICENSE.txt
-            echo copies or substantial portions of the Software. >> LICENSE.txt
-            echo. >> LICENSE.txt
-            echo THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR >> LICENSE.txt
-            echo IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, >> LICENSE.txt
-            echo FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE >> LICENSE.txt
-            echo AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER >> LICENSE.txt
-            echo LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, >> LICENSE.txt
-            echo OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE >> LICENSE.txt
-            echo SOFTWARE. >> LICENSE.txt
-        )
+        if (-not (Test-Path "LICENSE.txt")) {
+            @"
+MIT License
+
+Copyright (c) 2024 HUNGER Restaurant Billing System
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+"@ | Out-File -FilePath "LICENSE.txt" -Encoding UTF8
+        }
         
     - name: Build professional installer
       run: |
@@ -88,19 +90,19 @@ jobs:
         echo "Creating desktop-only installer..."
         
         # Create desktop-only package
-        if not exist "dist\desktop-only" mkdir "dist\desktop-only"
+        if (-not (Test-Path "dist\desktop-only")) { New-Item -ItemType Directory -Path "dist\desktop-only" -Force }
         
         # Copy only desktop application files
-        xcopy "restaurant_billing" "dist\desktop-only\restaurant_billing\" /E /I /Y
-        copy "main.py" "dist\desktop-only\"
-        copy "requirements.txt" "dist\desktop-only\"
-        copy "install_desktop_only.bat" "dist\desktop-only\"
-        copy "install_desktop_only.ps1" "dist\desktop-only\"
-        copy "README.md" "dist\desktop-only\"
-        copy "LICENSE.txt" "dist\desktop-only\"
+        Copy-Item -Path "restaurant_billing" -Destination "dist\desktop-only\" -Recurse -Force
+        Copy-Item -Path "main.py" -Destination "dist\desktop-only\" -Force
+        Copy-Item -Path "requirements.txt" -Destination "dist\desktop-only\" -Force
+        Copy-Item -Path "install_desktop_only.bat" -Destination "dist\desktop-only\" -Force
+        Copy-Item -Path "install_desktop_only.ps1" -Destination "dist\desktop-only\" -Force
+        Copy-Item -Path "README.md" -Destination "dist\desktop-only\" -Force
+        Copy-Item -Path "LICENSE.txt" -Destination "dist\desktop-only\" -Force
         
         # Create desktop-only ZIP
-        powershell -Command "Compress-Archive -Path 'dist\desktop-only\*' -DestinationPath 'dist\HUNGER-Restaurant-Billing-Desktop-Only.zip' -Force"
+        Compress-Archive -Path "dist\desktop-only\*" -DestinationPath "dist\HUNGER-Restaurant-Billing-Desktop-Only.zip" -Force
         
     - name: Upload professional installer
       uses: actions/upload-artifact@v4

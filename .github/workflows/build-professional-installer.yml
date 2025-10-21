@@ -1,0 +1,247 @@
+name: Build Professional Installer
+
+on:
+  workflow_dispatch:
+    inputs:
+      create_release:
+        description: 'Create GitHub release'
+        type: boolean
+        default: true
+      version:
+        description: 'Release version'
+        required: true
+        default: 'v1.0.0'
+
+jobs:
+  build-professional-installer:
+    runs-on: windows-latest
+    name: Build Professional Installer
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install NSIS
+      run: |
+        echo "Installing NSIS..."
+        choco install nsis -y
+        
+    - name: Create installer assets
+      run: |
+        echo "Creating installer assets..."
+        
+        # Create assets directory
+        if not exist "restaurant_billing\assets" mkdir "restaurant_billing\assets"
+        
+        # Create placeholder icon (you can replace with real icon)
+        echo. > "restaurant_billing\assets\icon.ico"
+        
+        # Create placeholder images
+        echo. > "restaurant_billing\assets\header.bmp"
+        echo. > "restaurant_billing\assets\welcome.bmp"
+        
+        # Create LICENSE.txt if not exists
+        if not exist "LICENSE.txt" (
+            echo MIT License > LICENSE.txt
+            echo. >> LICENSE.txt
+            echo Copyright (c) 2024 HUNGER Restaurant Billing System >> LICENSE.txt
+            echo. >> LICENSE.txt
+            echo Permission is hereby granted, free of charge, to any person obtaining a copy >> LICENSE.txt
+            echo of this software and associated documentation files (the "Software"), to deal >> LICENSE.txt
+            echo in the Software without restriction, including without limitation the rights >> LICENSE.txt
+            echo to use, copy, modify, merge, publish, distribute, sublicense, and/or sell >> LICENSE.txt
+            echo copies of the Software, and to permit persons to whom the Software is >> LICENSE.txt
+            echo furnished to do so, subject to the following conditions: >> LICENSE.txt
+            echo. >> LICENSE.txt
+            echo The above copyright notice and this permission notice shall be included in all >> LICENSE.txt
+            echo copies or substantial portions of the Software. >> LICENSE.txt
+            echo. >> LICENSE.txt
+            echo THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR >> LICENSE.txt
+            echo IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, >> LICENSE.txt
+            echo FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE >> LICENSE.txt
+            echo AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER >> LICENSE.txt
+            echo LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, >> LICENSE.txt
+            echo OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE >> LICENSE.txt
+            echo SOFTWARE. >> LICENSE.txt
+        )
+        
+    - name: Build professional installer
+      run: |
+        echo "Building professional installer with NSIS..."
+        makensis installer.nsi
+        
+        if exist "HUNGER-Restaurant-Billing-Setup.exe" (
+            echo "Professional installer created successfully"
+            dir "HUNGER-Restaurant-Billing-Setup.exe"
+        ) else (
+            echo "Professional installer creation failed"
+            exit 1
+        )
+        
+    - name: Create desktop-only installer
+      run: |
+        echo "Creating desktop-only installer..."
+        
+        # Create desktop-only package
+        if not exist "dist\desktop-only" mkdir "dist\desktop-only"
+        
+        # Copy only desktop application files
+        xcopy "restaurant_billing" "dist\desktop-only\restaurant_billing\" /E /I /Y
+        copy "main.py" "dist\desktop-only\"
+        copy "requirements.txt" "dist\desktop-only\"
+        copy "install_desktop_only.bat" "dist\desktop-only\"
+        copy "install_desktop_only.ps1" "dist\desktop-only\"
+        copy "README.md" "dist\desktop-only\"
+        copy "LICENSE.txt" "dist\desktop-only\"
+        
+        # Create desktop-only ZIP
+        powershell -Command "Compress-Archive -Path 'dist\desktop-only\*' -DestinationPath 'dist\HUNGER-Restaurant-Billing-Desktop-Only.zip' -Force"
+        
+    - name: Upload professional installer
+      uses: actions/upload-artifact@v4
+      with:
+        name: professional-installer
+        path: HUNGER-Restaurant-Billing-Setup.exe
+        
+    - name: Upload desktop-only package
+      uses: actions/upload-artifact@v4
+      with:
+        name: desktop-only-package
+        path: dist/HUNGER-Restaurant-Billing-Desktop-Only.zip
+
+  create-release:
+    if: github.event_name == 'workflow_dispatch' && inputs.create_release
+    needs: [build-professional-installer]
+    runs-on: ubuntu-latest
+    name: Create Release
+    
+    steps:
+    - name: Download professional installer
+      uses: actions/download-artifact@v4
+      with:
+        name: professional-installer
+        path: release-assets/
+        
+    - name: Download desktop-only package
+      uses: actions/download-artifact@v4
+      with:
+        name: desktop-only-package
+        path: release-assets/
+        
+    - name: Create release notes
+      run: |
+        cat > release-assets/RELEASE_NOTES.md << 'EOF'
+        # HUNGER Restaurant Billing System ${{ inputs.version }}
+        
+        ## Professional GUI Installer
+        - **File**: HUNGER-Restaurant-Billing-Setup.exe
+        - **Type**: Professional Windows installer with GUI
+        - **Features**: Component selection, automatic dependencies, shortcuts, uninstaller
+        
+        ## Desktop-Only Package
+        - **File**: HUNGER-Restaurant-Billing-Desktop-Only.zip
+        - **Type**: Simple installation package
+        - **Features**: Desktop application only, no mobile components
+        
+        ## Installation Options
+        
+        ### Option 1: Professional Installer (Recommended)
+        1. Download `HUNGER-Restaurant-Billing-Setup.exe`
+        2. Run as Administrator
+        3. Follow the installation wizard
+        4. Choose components to install
+        5. Launch from desktop shortcut or start menu
+        
+        ### Option 2: Desktop-Only Package
+        1. Download `HUNGER-Restaurant-Billing-Desktop-Only.zip`
+        2. Extract to desired location
+        3. Run `install_desktop_only.bat` as Administrator
+        4. Or run `install_desktop_only.ps1` in PowerShell as Administrator
+        
+        ## Features
+        - 🧾 Complete restaurant billing system
+        - 💰 GST calculation and compliance
+        - 📱 Mobile API (if mobile components installed)
+        - 💳 UPI QR code generation
+        - 👥 User management with roles
+        - 📊 Sales reports and analytics
+        - 🔄 Automatic updates
+        - 🖥️ Windows support
+        
+        ## System Requirements
+        - Windows 7 or later
+        - 4GB RAM minimum
+        500MB free disk space
+        
+        ## Default Login
+        - Username: `owner`
+        - Password: `1234`
+        
+        ## Support
+        - GitHub: https://github.com/shihan84/hunger-rest
+        - Issues: https://github.com/shihan84/hunger-rest/issues
+        EOF
+        
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ inputs.version }}
+        name: HUNGER Restaurant Billing System ${{ inputs.version }}
+        body: |
+          ## HUNGER Restaurant Billing System ${{ inputs.version }}
+          
+          ### Professional GUI Installer
+          - **File**: HUNGER-Restaurant-Billing-Setup.exe
+          - **Type**: Professional Windows installer with GUI
+          - **Features**: Component selection, automatic dependencies, shortcuts, uninstaller
+          
+          ### Desktop-Only Package
+          - **File**: HUNGER-Restaurant-Billing-Desktop-Only.zip
+          - **Type**: Simple installation package
+          - **Features**: Desktop application only, no mobile components
+          
+          ### Installation Options
+          
+          #### Option 1: Professional Installer (Recommended)
+          1. Download `HUNGER-Restaurant-Billing-Setup.exe`
+          2. Run as Administrator
+          3. Follow the installation wizard
+          4. Choose components to install
+          5. Launch from desktop shortcut or start menu
+          
+          #### Option 2: Desktop-Only Package
+          1. Download `HUNGER-Restaurant-Billing-Desktop-Only.zip`
+          2. Extract to desired location
+          3. Run `install_desktop_only.bat` as Administrator
+          4. Or run `install_desktop_only.ps1` in PowerShell as Administrator
+          
+          ### Features
+          - 🧾 Complete restaurant billing system
+          - 💰 GST calculation and compliance
+          - 📱 Mobile API (if mobile components installed)
+          - 💳 UPI QR code generation
+          - 👥 User management with roles
+          - 📊 Sales reports and analytics
+          - 🔄 Automatic updates
+          - 🖥️ Windows support
+          
+          ### System Requirements
+          - Windows 7 or later
+          - 4GB RAM minimum
+          - 500MB free disk space
+          
+          ### Default Login
+          - Username: `owner`
+          - Password: `1234`
+          
+          ### Support
+          - GitHub: https://github.com/shihan84/hunger-rest
+          - Issues: https://github.com/shihan84/hunger-rest/issues
+        files: release-assets/*
+        draft: false
+        prerelease: false

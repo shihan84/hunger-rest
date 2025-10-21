@@ -106,7 +106,7 @@ jobs:
         powershell -Command "Compress-Archive -Path 'dist\hunger-restaurant-billing\*' -DestinationPath 'dist\HUNGER-Restaurant-Billing-Windows.zip' -Force"
         
     - name: Upload Windows package
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: hunger-restaurant-billing-windows
         path: dist/HUNGER-Restaurant-Billing-Windows.zip
@@ -234,7 +234,7 @@ jobs:
         tar -czf HUNGER-Restaurant-Billing-Linux.tar.gz hunger-restaurant-billing/
         
     - name: Upload Linux package
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: hunger-restaurant-billing-linux
         path: dist/HUNGER-Restaurant-Billing-Linux.tar.gz
@@ -353,7 +353,7 @@ jobs:
         tar -czf HUNGER-Restaurant-Billing-macOS.tar.gz hunger-restaurant-billing/
         
     - name: Upload macOS package
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: hunger-restaurant-billing-macos
         path: dist/HUNGER-Restaurant-Billing-macOS.tar.gz

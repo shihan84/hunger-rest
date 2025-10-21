@@ -1,0 +1,175 @@
+name: Create Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+      create_release:
+        description: 'Create GitHub release'
+        type: boolean
+        default: true
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    name: Create Release
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Download Windows package
+      uses: actions/download-artifact@v4
+      with:
+        name: hunger-restaurant-billing-windows
+        path: packages/windows/
+        
+    - name: Download Linux package  
+      uses: actions/download-artifact@v4
+      with:
+        name: hunger-restaurant-billing-linux
+        path: packages/linux/
+        
+    - name: Download macOS package
+      uses: actions/download-artifact@v4
+      with:
+        name: hunger-restaurant-billing-macos
+        path: packages/macos/
+        
+    - name: Create release assets
+      run: |
+        mkdir -p release-assets
+        
+        # Copy packages
+        cp packages/windows/HUNGER-Restaurant-Billing-Windows.zip release-assets/
+        cp packages/linux/HUNGER-Restaurant-Billing-Linux.tar.gz release-assets/
+        cp packages/macos/HUNGER-Restaurant-Billing-macOS.tar.gz release-assets/
+        
+        # Create installation instructions
+        cat > release-assets/INSTALLATION_INSTRUCTIONS.md << 'EOF'
+        # HUNGER Restaurant Billing System - Installation Instructions
+        
+        ## Quick Start
+        
+        ### Windows Installation
+        1. Download `HUNGER-Restaurant-Billing-Windows.zip`
+        2. Extract the ZIP file to your desired location
+        3. Run `install_simple.bat` as Administrator
+        4. Or run `start_desktop.bat` to launch directly
+        
+        ### Linux Installation
+        1. Download `HUNGER-Restaurant-Billing-Linux.tar.gz`
+        2. Extract: `tar -xzf HUNGER-Restaurant-Billing-Linux.tar.gz`
+        3. Run: `cd hunger-restaurant-billing && ./install.sh`
+        4. Launch: `./start_desktop.sh`
+        
+        ### macOS Installation
+        1. Download `HUNGER-Restaurant-Billing-macOS.tar.gz`
+        2. Extract: `tar -xzf HUNGER-Restaurant-Billing-macOS.tar.gz`
+        3. Run: `cd hunger-restaurant-billing && ./install.command`
+        4. Launch: `./start_desktop.command`
+        
+        ## Default Login Credentials
+        - Username: `owner`
+        - Password: `1234`
+        
+        ## Features
+        - Complete restaurant billing system
+        - GST calculation and compliance
+        - UPI QR code generation
+        - Order management
+        - Invoice generation
+        - User management with role-based access
+        - Automatic updates
+        - Cross-platform support
+        
+        ## Support
+        For issues and support, visit: https://github.com/shihan84/hunger-rest
+        EOF
+        
+        # Create README for release
+        cat > release-assets/README.md << 'EOF'
+        # HUNGER Restaurant Billing System
+        
+        A comprehensive restaurant billing system with GST compliance, order management, and cross-platform support.
+        
+        ## Downloads
+        
+        - **Windows**: HUNGER-Restaurant-Billing-Windows.zip
+        - **Linux**: HUNGER-Restaurant-Billing-Linux.tar.gz  
+        - **macOS**: HUNGER-Restaurant-Billing-macOS.tar.gz
+        
+        ## Installation
+        
+        See INSTALLATION_INSTRUCTIONS.md for detailed installation steps.
+        
+        ## Features
+        
+        - 🧾 **Billing & Invoicing**: Complete billing system with GST calculation
+        - 📱 **Mobile API**: REST API for mobile applications
+        - 💳 **UPI Integration**: QR code generation for payments
+        - 👥 **User Management**: Role-based access control
+        - 📊 **Reports**: Sales and analytics
+        - 🔄 **Auto Updates**: Automatic update notifications
+        - 🖥️ **Cross-Platform**: Windows, Linux, macOS support
+        
+        ## Quick Start
+        
+        1. Download the package for your platform
+        2. Extract and run the installer
+        3. Launch the application
+        4. Login with: `owner` / `1234`
+        
+        ## Support
+        
+        - GitHub: https://github.com/shihan84/hunger-rest
+        - Issues: https://github.com/shihan84/hunger-rest/issues
+        EOF
+        
+    - name: Create GitHub Release
+      if: inputs.create_release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ inputs.version }}
+        name: HUNGER Restaurant Billing System ${{ inputs.version }}
+        body: |
+          ## HUNGER Restaurant Billing System ${{ inputs.version }}
+          
+          ### What's New
+          - Automated build and packaging
+          - Cross-platform support (Windows, Linux, macOS)
+          - Self-contained packages with virtual environments
+          - Easy installation scripts
+          
+          ### Downloads
+          - **Windows**: HUNGER-Restaurant-Billing-Windows.zip
+          - **Linux**: HUNGER-Restaurant-Billing-Linux.tar.gz  
+          - **macOS**: HUNGER-Restaurant-Billing-macOS.tar.gz
+          
+          ### Installation
+          See INSTALLATION_INSTRUCTIONS.md for detailed installation steps.
+          
+          ### Default Login
+          - Username: `owner`
+          - Password: `1234`
+          
+          ### Features
+          - 🧾 Complete billing system with GST compliance
+          - 📱 Mobile API for restaurant apps
+          - 💳 UPI QR code generation
+          - 👥 User management with roles
+          - 📊 Sales reports and analytics
+          - 🔄 Automatic updates
+          - 🖥️ Cross-platform support
+        files: release-assets/*
+        draft: false
+        prerelease: false
+        
+    - name: Upload release assets
+      uses: actions/upload-artifact@v4
+      with:
+        name: release-assets-${{ inputs.version }}
+        path: release-assets/

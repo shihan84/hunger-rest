@@ -598,6 +598,10 @@ class RestaurantApp(tk.Tk):
 	def _check_for_updates_on_startup(self):
 		"""Check for updates on startup"""
 		pass  # Silent check, no UI needed
+		
+	def _open_payments(self):
+		"""Open payments interface"""
+		messagebox.showinfo("Payments", "Payments feature is under development.")
 
 
 class MenuItemDialog(simpledialog.Dialog):

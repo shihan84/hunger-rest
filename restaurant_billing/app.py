@@ -1,8 +1,15 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
-from PIL import Image, ImageTk
 from pathlib import Path
 import platform
+
+# Try to import PIL, but make it optional
+try:
+    from PIL import Image, ImageTk
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
+    print("Warning: PIL (Pillow) not available. Logo functionality will be disabled.")
 
 from .config import CONFIG
 from .db import init_db, get_order_by_invoice, list_menu_items, create_order, list_open_orders, mark_order_paid
@@ -67,6 +74,7 @@ class RestaurantApp(tk.Tk):
 		self._set_window_icon(logo_path)
 		self._enter_fullscreen(CONFIG.fullscreen)
 		self.current_user = None
+		self.cart_items = []
 		self._login_flow()
 		self._build_ui(logo_path)
 		self._apply_permissions()
@@ -81,8 +89,8 @@ class RestaurantApp(tk.Tk):
 				self.destroy()
 				return
 			username, password = dlg.result
-			if verify_password(username, password):
-				user = get_user(username)
+			user = get_user(username)
+			if user and verify_password(password, user[4], user[5]):  # user[4] = password_hash, user[5] = password_salt
 				self.current_user = {
 					"id": user[0],
 					"username": user[1],
@@ -94,6 +102,8 @@ class RestaurantApp(tk.Tk):
 				messagebox.showerror("Login Failed", "Invalid credentials.")
 
 	def _set_window_icon(self, logo_path: Path) -> None:
+		if not PIL_AVAILABLE:
+			return
 		try:
 			img = Image.open(logo_path)
 			icon = ImageTk.PhotoImage(img)
@@ -547,6 +557,47 @@ class RestaurantApp(tk.Tk):
 				self._refresh_menu_mgmt()
 			except Exception as e:
 				messagebox.showerror("Error", f"Failed to delete menu item: {str(e)}")
+
+	# Missing methods that are referenced in the UI but not implemented
+	def _open_user_management(self):
+		"""Open user management interface"""
+		messagebox.showinfo("User Management", "User management feature is under development.")
+		
+	def _open_menu_management(self):
+		"""Open menu management interface"""
+		messagebox.showinfo("Menu Management", "Menu management feature is under development.")
+		
+	def _open_order_management(self):
+		"""Open order management interface"""
+		messagebox.showinfo("Order Management", "Order management feature is under development.")
+		
+	def _open_payment_system(self):
+		"""Open payment system interface"""
+		messagebox.showinfo("Payment System", "Payment system feature is under development.")
+		
+	def _open_reports(self):
+		"""Open reports interface"""
+		messagebox.showinfo("Reports", "Reports feature is under development.")
+		
+	def _open_settings(self):
+		"""Open settings interface"""
+		messagebox.showinfo("Settings", "Settings feature is under development.")
+		
+	def _open_printer_config(self):
+		"""Open printer configuration"""
+		messagebox.showinfo("Printer Config", "Printer configuration feature is under development.")
+		
+	def _open_update_settings(self):
+		"""Open update settings"""
+		messagebox.showinfo("Update Settings", "Update settings feature is under development.")
+		
+	def _send_today_sales(self):
+		"""Send today's sales report"""
+		messagebox.showinfo("Send Sales", "Send sales feature is under development.")
+		
+	def _check_for_updates_on_startup(self):
+		"""Check for updates on startup"""
+		pass  # Silent check, no UI needed
 
 
 class MenuItemDialog(simpledialog.Dialog):

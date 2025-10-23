@@ -16,19 +16,36 @@ class AppConfig:
 	default_state_code: str = "27"  # Maharashtra by default
 	currency_symbol: str = "₹"
 	default_service_charge_percent: float = 0.0  # optional, can be set 5-10
-	fullscreen: bool = False
-	telegram_bot_token: Optional[str] = None
-	telegram_chat_id: Optional[str] = None
+	fullscreen: bool = True  # Enable fullscreen for touch screens
+	# Touch screen UI settings
+	touch_mode: bool = True
+	button_height: int = 60  # Larger buttons for touch
+	button_width: int = 120
+	font_size_large: int = 14
+	font_size_medium: int = 12
+	font_size_small: int = 10
+	icon_size: int = 32  # Icon size for touch buttons
+	telegram_bot_token: Optional[str] = "8391823641:AAHuRZlop8M_0zNSMnk1iiGkGTCORCc7qks"
+	telegram_chat_id: Optional[str] = "-4816754138"
 	upi_vpa: Optional[str] = None
 	upi_payee_name: Optional[str] = None
-	# Printing configuration
+	# Printing configuration for POSIFLOW KP206B-UB
 	printer_type: str = "os"  # os | escpos_usb | escpos_network
-	escpos_vendor_id: Optional[int] = None  # e.g., 0x04b8 for Epson
-	escpos_product_id: Optional[int] = None
+	escpos_vendor_id: Optional[int] = None  # Will be auto-detected for POSIFLOW
+	escpos_product_id: Optional[int] = None  # Will be auto-detected for POSIFLOW
 	escpos_host: Optional[str] = None  # for network printers
 	escpos_port: int = 9100
-	paper_width_chars: int = 42  # typical 58mm(~32) or 80mm(~42) paper
-	printer_encoding: str = "cp437"
+	paper_width_chars: int = 30  # 58mm paper width for POSIFLOW KP206B-UB (30 chars per line, Font Size 8, precise margins)
+	printer_encoding: str = "utf-8"  # Better Unicode support
+	printer_name: str = "POSIFLOW KP206B-UB"  # Friendly printer name
+	# POSIFLOW KP206B-UB specific settings
+	paper_width_mm: int = 58  # 58mm paper width
+	print_speed_mm_per_sec: int = 90  # 90mm/s print speed
+	thermal_printer: bool = True  # Thermal receipt printer
+	# GST Configuration
+	gst_enabled: bool = False  # Enable/disable GST calculation (disabled by default)
+	restaurant_gst_number: Optional[str] = None  # Restaurant GST number
+	gst_registration_type: str = "REGULAR"  # REGULAR | COMPOSITION | UNREGISTERED
 
 
 CONFIG = AppConfig()

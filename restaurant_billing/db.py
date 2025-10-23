@@ -187,7 +187,7 @@ def list_menu_items() -> List[Dict[str, Any]]:
 
 
 def _generate_invoice_number(conn: sqlite3.Connection) -> str:
-	cur = conn.execute("SELECT strftime('%Y%m%d', 'now') || '-' || printf('%05d', COALESCE(MAX(order_id)+1,1)) FROM Orders")
+	cur = conn.execute("SELECT printf('%04d', COALESCE(MAX(order_id)+1,1)) FROM Orders")
 	return cur.fetchone()[0]
 
 

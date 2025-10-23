@@ -1,6 +1,6 @@
 from typing import Optional
-from telegram import Bot
-from telegram.error import TelegramError
+import asyncio
+import requests
 
 from .config import CONFIG
 from .db import get_today_sales_totals
@@ -14,11 +14,21 @@ def send_message(text: str, bot_token: Optional[str] = None, chat_id: Optional[s
 		chat_id = CONFIG.telegram_chat_id
 	if not bot_token or not chat_id:
 		return False
+	
 	try:
-		bot = Bot(token=bot_token)
-		bot.send_message(chat_id=chat_id, text=text)
-		return True
-	except TelegramError:
+		# Use requests instead of async telegram library to avoid async issues
+		url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+		data = {
+			"chat_id": chat_id,
+			"text": text,
+			"parse_mode": "HTML"
+		}
+		
+		response = requests.post(url, data=data, timeout=10)
+		return response.status_code == 200
+		
+	except Exception as e:
+		print(f"Telegram send error: {e}")
 		return False
 
 

@@ -89,8 +89,8 @@ class RestaurantApp(tk.Tk):
 				self.destroy()
 				return
 			username, password = dlg.result
-			user = get_user(username)
-			if user and verify_password(password, user[4], user[5]):  # user[4] = password_hash, user[5] = password_salt
+			if verify_password(username, password):
+				user = get_user(username)
 				self.current_user = {
 					"id": user[0],
 					"username": user[1],
